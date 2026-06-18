@@ -182,11 +182,9 @@ impl WorkflowState for SqliteStateStore {
             let snapshot_iter = stmt.query_map([&execution_id_str], |row| row.get::<_, String>(0));
 
             if let Ok(iter) = snapshot_iter {
-                for json_res in iter {
-                    if let Ok(json) = json_res {
-                        if let Ok(snapshot) = serde_json::from_str(&json) {
-                            history.push(snapshot);
-                        }
+                for json in iter.flatten() {
+                    if let Ok(snapshot) = serde_json::from_str(&json) {
+                        history.push(snapshot);
                     }
                 }
             }
