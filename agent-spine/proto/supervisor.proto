@@ -34,3 +34,32 @@ message PendingTask {
 message GetPendingTasksResponse {
     repeated PendingTask tasks = 1;
 }
+
+// A service for the web dashboard to monitor and manage executions.
+service DashboardService {
+    // List all execution IDs.
+    rpc ListExecutions (ListExecutionsRequest) returns (ListExecutionsResponse);
+    
+    // Get the full state snapshot history for a specific execution.
+    rpc GetExecutionHistory (GetExecutionHistoryRequest) returns (GetExecutionHistoryResponse);
+}
+
+message ListExecutionsRequest {}
+
+message ListExecutionsResponse {
+    repeated string execution_ids = 1;
+}
+
+message GetExecutionHistoryRequest {
+    string execution_id = 1;
+}
+
+message StateSnapshot {
+    string execution_id = 1;
+    uint64 sequence = 2;
+    string payload_json = 3;
+}
+
+message GetExecutionHistoryResponse {
+    repeated StateSnapshot history = 1;
+}

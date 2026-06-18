@@ -1,0 +1,39 @@
+[package]
+name = "agent-spine"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+description = "A local-first, stateful workflow engine for supervising AI coding agents."
+repository = "https://github.com/aeswibon/agent-spine"
+readme = "README.md"
+keywords = ["agents", "orchestration", "workflow", "state-machine", "ai"]
+categories = ["development-tools"]
+
+[dependencies]
+clap = { version = "4.5", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+thiserror = "2.0"
+tokio = { version = "1.45", features = ["macros", "rt-multi-thread", "signal", "sync"] }
+tokio-stream = "0.1"
+tonic = "0.12"
+prost = "0.13"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+uuid = { version = "1.16", features = ["serde", "v7"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+tower-http = { version = "0.7.0", features = ["cors"] }
+tonic-web = "0.12"
+
+[build-dependencies]
+tonic-build = "0.12"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = "deny"

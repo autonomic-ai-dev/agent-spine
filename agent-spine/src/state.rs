@@ -8,6 +8,8 @@ use thiserror::Error;
 
 use crate::{ExecutionId, StateSnapshot, WorkflowState};
 
+
+
 /// Append-only state adapter used by tests and early engine development.
 #[derive(Default)]
 pub struct InMemoryStateStore {
@@ -36,6 +38,10 @@ impl WorkflowState for InMemoryStateStore {
             .cloned()
             .unwrap_or_default()
     }
+
+    fn list_executions(&self) -> Result<Vec<ExecutionId>, StateError> {
+        Ok(self.snapshots.keys().copied().collect())
+    }
 }
 
 /// A file-backed append-only state store using JSONL.
@@ -53,11 +59,6 @@ impl FileStateStore {
     }
 
     fn file_path(&self, execution_id: ExecutionId) -> PathBuf {
-        // We use the string representation of ExecutionId's inner UUID.
-        // ExecutionId wraps a UUID which implements Display via serde if we serialize it,
-        // but it might not implement Display directly.
-        // Assuming we can serialize it to string. Let's just use JSON serialization or debug format for now.
-        // Wait, ExecutionId doesn't have a public getter for Uuid right now, but we can serialize it to string.
         let file_name = format!(
             "{}.jsonl",
             serde_json::to_string(&execution_id)
@@ -109,6 +110,23 @@ impl WorkflowState for FileStateStore {
 
         history
     }
+
+    fn list_executions(&self) -> Result<Vec<ExecutionId>, StateError> {
+        let mut ids = Vec::new();
+        if let Ok(entries) = fs::read_dir(&self.base_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|s| s.to_str()) == Some("jsonl") {
+                    if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                        if let Ok(id) = serde_json::from_str::<ExecutionId>(&format!("\"{}\"", stem)) {
+                            ids.push(id);
+                        }
+                    }
+                }
+            }
+        }
+        Ok(ids)
+    }
 }
 
 /// A SQLite-backed state store for robust, atomic persistence.
@@ -141,7 +159,6 @@ impl SqliteStateStore {
 impl WorkflowState for SqliteStateStore {
     #[tracing::instrument(skip(self, snapshot), fields(execution_id = ?snapshot.execution_id(), seq = snapshot.sequence()))]
     fn append(&mut self, snapshot: StateSnapshot) -> Result<(), StateError> {
-        // We use the JSON-serialized execution_id since it wraps a UUID.
         let execution_id_str = serde_json::to_string(&snapshot.execution_id())
             .unwrap_or_else(|_| "unknown".to_string())
             .trim_matches('"')
@@ -192,6 +209,19 @@ impl WorkflowState for SqliteStateStore {
         }
 
         history
+    }
+
+    fn list_executions(&self) -> Result<Vec<ExecutionId>, StateError> {
+        let mut ids = Vec::new();
+        let mut stmt = self.conn.prepare("SELECT DISTINCT execution_id FROM snapshots")?;
+        let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+        for row in rows {
+            let id_str = row?;
+            if let Ok(id) = serde_json::from_str::<ExecutionId>(&format!("\"{}\"", id_str)) {
+                ids.push(id);
+            }
+        }
+        Ok(ids)
     }
 }
 

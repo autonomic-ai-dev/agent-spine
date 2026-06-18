@@ -1,3 +1,4 @@
+pub mod api;
 pub mod executor;
 pub mod router;
 pub mod server;
@@ -18,7 +19,7 @@ pub use workflow::{
 };
 
 /// Read and append immutable workflow snapshots.
-pub trait WorkflowState {
+pub trait WorkflowState: Send {
     /// Persist a snapshot.
     ///
     /// # Errors
@@ -29,4 +30,7 @@ pub trait WorkflowState {
 
     /// Return the ordered snapshot history for an execution.
     fn history(&self, execution_id: ExecutionId) -> Vec<StateSnapshot>;
+
+    /// List all unique execution IDs stored.
+    fn list_executions(&self) -> Result<Vec<ExecutionId>, state::StateError>;
 }

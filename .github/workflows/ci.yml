@@ -2,26 +2,34 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    branches: ["master"]
   pull_request:
-    branches: [master]
-  workflow_dispatch:
+    branches: ["master"]
 
-concurrency:
-  group: ci-pipeline-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
-permissions:
-  actions: write
+env:
+  CARGO_TERM_COLOR: always
 
 jobs:
-  run-pipeline:
-    name: Run CI pipeline
+  check:
+    name: Check, Lint & Test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
-      - uses: aeswibon/pipeline-compose-run@v1.1.0
+      - name: Install protobuf-compiler
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@master
         with:
-          pipeline_file: .github/pipelines/ci.yml
-          github_token: ${{ github.token }}
+          toolchain: stable
+          components: clippy, rustfmt
+
+      - name: Format Check
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --all-features
+
+      - name: Test
+        run: cargo test --workspace --all-features

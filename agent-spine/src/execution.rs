@@ -18,3 +18,17 @@ impl Default for ExecutionId {
         Self::new()
     }
 }
+
+impl std::str::FromStr for ExecutionId {
+    type Err = uuid::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Self(Uuid::from_str(s)?))
+    }
+}
+
+impl std::fmt::Display for ExecutionId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
