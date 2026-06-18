@@ -22,6 +22,7 @@ impl Supervisor {
         &self,
         node_name: String,
         _payload: Value,
+        timeout: Option<std::time::Duration>,
     ) -> Result<Value, SupervisorError> {
         let (tx, rx) = oneshot::channel();
 
@@ -34,19 +35,29 @@ impl Supervisor {
             tracing::info!("Agent task suspended and waiting for delegation result");
         }
 
-        // Wait asynchronously with a 30s timeout
-        match tokio::time::timeout(std::time::Duration::from_secs(30), rx).await {
-            Ok(Ok(res)) => Ok(res),
-            Ok(Err(_)) => {
-                tracing::warn!("Agent channel dropped");
-                Err(SupervisorError::Dropped(node_name))
-            }
-            Err(_) => {
-                tracing::warn!("Agent task timed out after 30 seconds");
-                if let Ok(mut pending) = self.pending.lock() {
-                    pending.remove(&node_name);
+        if let Some(duration) = timeout {
+            match tokio::time::timeout(duration, rx).await {
+                Ok(Ok(res)) => Ok(res),
+                Ok(Err(_)) => {
+                    tracing::warn!("Agent channel dropped");
+                    Err(SupervisorError::Dropped(node_name))
                 }
-                Err(SupervisorError::Timeout(node_name))
+                Err(_) => {
+                    tracing::warn!("Agent task timed out after {} seconds", duration.as_secs());
+                    if let Ok(mut pending) = self.pending.lock() {
+                        pending.remove(&node_name);
+                    }
+                    Err(SupervisorError::Timeout(node_name))
+                }
+            }
+        } else {
+            tracing::info!("Waiting indefinitely for human intervention on '{}'", node_name);
+            match rx.await {
+                Ok(res) => Ok(res),
+                Err(_) => {
+                    tracing::warn!("Agent channel dropped");
+                    Err(SupervisorError::Dropped(node_name))
+                }
             }
         }
     }

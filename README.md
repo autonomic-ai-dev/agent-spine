@@ -187,8 +187,6 @@ cargo test --workspace --all-features
 7. Provider-specific behavior remains behind adapter traits.
 8. Replay creates a new execution branch; it does not rewrite history.
 
-See [`docs/superpowers/IMPLEMENTATION.md`](docs/superpowers/IMPLEMENTATION.md) for delivery phases and [`docs/superpowers/AUDIT.md`](docs/superpowers/AUDIT.md) for the full repository audit and roadmap.
-
 ## Contributing
 
 Issues that sharpen the workflow schema, snapshot model, IDE hook protocol, or verification boundaries are especially welcome.

@@ -237,3 +237,127 @@ pub enum StateError {
     #[error("sqlite error: {0}")]
     Sqlite(#[from] rusqlite::Error),
 }
+
+#[cfg(feature = "postgres")]
+pub struct PostgresStateStore {
+    pool: sqlx::PgPool,
+}
+
+#[cfg(feature = "postgres")]
+impl PostgresStateStore {
+    /// Create a new Postgres-backed state store and ensure tables exist.
+    pub async fn new(connection_url: &str) -> Result<Self, StateError> {
+        let pool = sqlx::PgPool::connect(connection_url)
+            .await
+            .map_err(|e| StateError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
+
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS snapshots (
+                id SERIAL PRIMARY KEY,
+                execution_id VARCHAR(255) NOT NULL,
+                sequence BIGINT NOT NULL,
+                snapshot_data JSONB NOT NULL,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(execution_id, sequence)
+            )",
+        )
+        .execute(&pool)
+        .await
+        .map_err(|e| StateError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
+
+        Ok(Self { pool })
+    }
+}
+
+#[cfg(feature = "postgres")]
+impl WorkflowState for PostgresStateStore {
+    #[tracing::instrument(skip(self, snapshot), fields(execution_id = ?snapshot.execution_id(), seq = snapshot.sequence()))]
+    fn append(&mut self, snapshot: StateSnapshot) -> Result<(), StateError> {
+        let execution_id_str = serde_json::to_string(&snapshot.execution_id())
+            .unwrap_or_else(|_| "unknown".to_string())
+            .trim_matches('"')
+            .to_string();
+
+        let expected_sequence = tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM snapshots WHERE execution_id = $1")
+                    .bind(&execution_id_str)
+                    .fetch_one(&self.pool)
+                    .await
+                    .unwrap_or((0,));
+                count.0 as u64
+            })
+        });
+
+        if snapshot.sequence() != expected_sequence {
+            return Err(StateError::InvalidSequence {
+                expected: expected_sequence,
+                actual: snapshot.sequence(),
+            });
+        }
+
+        let json = serde_json::to_value(&snapshot).map_err(StateError::Serialization)?;
+
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                sqlx::query("INSERT INTO snapshots (execution_id, sequence, snapshot_data) VALUES ($1, $2, $3)")
+                    .bind(&execution_id_str)
+                    .bind(snapshot.sequence() as i64)
+                    .bind(&json)
+                    .execute(&self.pool)
+                    .await
+            })
+        }).map_err(|e| StateError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
+
+        Ok(())
+    }
+
+    fn history(&self, execution_id: ExecutionId) -> Vec<StateSnapshot> {
+        let execution_id_str = serde_json::to_string(&execution_id)
+            .unwrap_or_else(|_| "unknown".to_string())
+            .trim_matches('"')
+            .to_string();
+
+        let mut history = Vec::new();
+
+        let rows: Result<Vec<(serde_json::Value,)>, _> = tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                sqlx::query_as("SELECT snapshot_data FROM snapshots WHERE execution_id = $1 ORDER BY sequence ASC")
+                    .bind(&execution_id_str)
+                    .fetch_all(&self.pool)
+                    .await
+            })
+        });
+
+        if let Ok(rows) = rows {
+            for (json,) in rows {
+                if let Ok(snapshot) = serde_json::from_value(json) {
+                    history.push(snapshot);
+                }
+            }
+        }
+
+        history
+    }
+
+    fn list_executions(&self) -> Result<Vec<ExecutionId>, StateError> {
+        let mut ids = Vec::new();
+        
+        let rows: Result<Vec<(String,)>, _> = tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                sqlx::query_as("SELECT DISTINCT execution_id FROM snapshots")
+                    .fetch_all(&self.pool)
+                    .await
+            })
+        });
+
+        if let Ok(rows) = rows {
+            for (id_str,) in rows {
+                if let Ok(id) = serde_json::from_str::<ExecutionId>(&format!("\"{}\"", id_str)) {
+                    ids.push(id);
+                }
+            }
+        }
+        Ok(ids)
+    }
+}

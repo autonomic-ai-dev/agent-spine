@@ -94,6 +94,7 @@ impl<S: WorkflowState> Executor<S> {
                     .expect("node must exist in workflow");
 
                 let node_kind = node.kind().clone();
+                let retry_policy = node.retry_policy();
                 let supervisor = self.supervisor.clone();
                 let payload = current_snapshot.payload().clone();
 
@@ -104,10 +105,15 @@ impl<S: WorkflowState> Executor<S> {
                     let next_payload = match node_kind {
                         NodeKind::Agent | NodeKind::Checkpoint => {
                             let mut retries = 0;
-                            let max_retries = 3;
+                            let max_retries = retry_policy.max_attempts;
+                            let base_backoff = retry_policy.backoff_ms;
                             loop {
                                 match supervisor
-                                    .delegate(node_name.clone(), payload.clone())
+                                    .delegate(
+                                        node_name.clone(), 
+                                        payload.clone(), 
+                                        Some(std::time::Duration::from_secs(30))
+                                    )
                                     .await
                                 {
                                     Ok(res) => break res,
@@ -122,7 +128,7 @@ impl<S: WorkflowState> Executor<S> {
                                             return Err(ExecutorError::SupervisorFailed);
                                         }
                                         retries += 1;
-                                        let backoff_ms = 100 * 2u64.pow(retries as u32);
+                                        let backoff_ms = base_backoff * 2u64.pow(retries as u32);
                                         tracing::warn!(
                                             "Node '{}' failed: {}. Retrying ({}/{}) in {}ms...",
                                             node_name,
@@ -142,7 +148,7 @@ impl<S: WorkflowState> Executor<S> {
                         NodeKind::Verify => payload,
                         NodeKind::ApprovalGate => {
                             let result = supervisor
-                                .delegate(node_name.clone(), payload)
+                                .delegate(node_name.clone(), payload, None)
                                 .await
                                 .map_err(|_| ExecutorError::SupervisorFailed)?;
 

@@ -1,7 +1,6 @@
 pub mod api;
 pub mod executor;
 pub mod router;
-pub mod server;
 pub mod state;
 pub mod supervisor;
 pub mod workflow;

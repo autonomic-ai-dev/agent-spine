@@ -149,6 +149,22 @@ impl ValidatedWorkflow {
     }
 }
 
+/// Policy for handling transient node failures.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct RetryPolicy {
+    pub max_attempts: u32,
+    pub backoff_ms: u64,
+}
+
+impl Default for RetryPolicy {
+    fn default() -> Self {
+        Self {
+            max_attempts: 3,
+            backoff_ms: 100,
+        }
+    }
+}
+
 /// A node in the declarative workflow graph.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct WorkflowNode {
@@ -156,6 +172,8 @@ pub struct WorkflowNode {
     kind: NodeKind,
     #[serde(default)]
     description: Option<String>,
+    #[serde(default)]
+    retry_policy: Option<RetryPolicy>,
 }
 
 impl WorkflowNode {
@@ -178,6 +196,7 @@ impl WorkflowNode {
             name: name.into(),
             kind,
             description: None,
+            retry_policy: None,
         }
     }
 
@@ -186,6 +205,12 @@ impl WorkflowNode {
     pub fn with_description(mut self, description: impl Into<String>) -> Self {
         self.description = Some(description.into());
         self
+    }
+
+    /// Return the node's retry policy.
+    #[must_use]
+    pub fn retry_policy(&self) -> RetryPolicy {
+        self.retry_policy.clone().unwrap_or_default()
     }
 
     /// Return the node name.

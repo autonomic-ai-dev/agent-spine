@@ -25,6 +25,14 @@ uuid = { version = "1.16", features = ["serde", "v7"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 tower-http = { version = "0.7.0", features = ["cors"] }
 tonic-web = "0.12"
+sqlx = { version = "0.8", features = ["postgres", "runtime-tokio", "tls-rustls", "json"], optional = true }
+opentelemetry = "0.32.0"
+opentelemetry_sdk = { version = "0.32.1", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.32.0", features = ["grpc-tonic"] }
+tracing-opentelemetry = "0.33.0"
+
+[features]
+postgres = ["dep:sqlx"]
 
 [build-dependencies]
 tonic-build = "0.12"

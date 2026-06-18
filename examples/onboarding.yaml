@@ -1,0 +1,44 @@
+name: Onboarding Sample
+version: 1
+start_node: CodeGenerator
+
+nodes:
+  - name: CodeGenerator
+    kind: agent
+    description: "Generates the initial scaffolding code based on the user request."
+    retry_policy:
+      max_attempts: 3
+      backoff_ms: 500
+
+  - name: Linter
+    kind: checkpoint
+    description: "Runs static analysis and syntax checks."
+    
+  - name: UnitTests
+    kind: checkpoint
+    description: "Executes the unit test suite."
+
+  - name: VerifyQuality
+    kind: verify
+    description: "Aggregates the lint and test results to decide if we escalate."
+
+  - name: HumanReview
+    kind: approval_gate
+    description: "Pauses the execution indefinitely until a human signs off."
+
+edges:
+  # The generator produces code, then fans out to Linter and UnitTests in parallel
+  - from: CodeGenerator
+    to: Linter
+  - from: CodeGenerator
+    to: UnitTests
+
+  # Both parallel tracks fan back into the verification stage
+  - from: Linter
+    to: VerifyQuality
+  - from: UnitTests
+    to: VerifyQuality
+
+  # If verification passes, require human sign-off
+  - from: VerifyQuality
+    to: HumanReview
