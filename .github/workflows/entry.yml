@@ -9,11 +9,14 @@ on:
 jobs:
   pipeline:
     runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
       - name: Run Pipeline Compose
-        uses: aeswibon/pipeline-compose-run@v1
+        uses: aeswibon/pipeline-compose-run@main
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           pipeline_file: .github/pipelines/pipeline.yml

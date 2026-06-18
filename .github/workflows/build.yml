@@ -15,7 +15,7 @@ jobs:
       - name: Run build
         run: cargo build --release
       - name: Export Binary
-        uses: aeswibon/pipeline-compose-export@v1
+        uses: aeswibon/pipeline-compose-export@main
         with:
           path: target/release/agent-spine
           name: agent-spine-binary
