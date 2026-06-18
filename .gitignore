@@ -1,0 +1,12 @@
+/target/
+/.codex/
+/.idea/
+/.vscode/
+.DS_Store
+*.log
+.env
+.env.*
+!.env.example
+
+# Local implementation plans and Superpowers workflow artifacts.
+/docs/superpowers/
