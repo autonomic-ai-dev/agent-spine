@@ -157,3 +157,92 @@ async fn test_executor_parallel_fan_out() {
     assert_eq!(final_payload["b_done"], true);
     assert_eq!(final_payload["c_done"], true);
 }
+
+#[tokio::test]
+async fn test_approval_gate_accepts() {
+    let nodes = vec![
+        WorkflowNode::new("start", NodeKind::Agent),
+        WorkflowNode::approval_gate("gate"),
+        WorkflowNode::new("end", NodeKind::Agent),
+    ];
+    let edges = vec![
+        WorkflowEdge::new("start", "gate"),
+        WorkflowEdge::new("gate", "end"),
+    ];
+
+    let def = WorkflowDefinition::new("test_approval_accepts", 1, "start", nodes, edges);
+    let validated = def.validate().expect("valid workflow");
+
+    let store = Arc::new(Mutex::new(InMemoryStateStore::default()));
+    let supervisor = Supervisor::new();
+    let router = ConfidenceRouter::new(3);
+
+    let executor = Executor::new(validated, Arc::clone(&store), supervisor.clone(), router);
+
+    let exec_task = tokio::spawn(async move {
+        let mut exec = executor;
+        exec.run(json!({ "init": true })).await
+    });
+
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    supervisor
+        .resume("start", json!({ "start_done": true }))
+        .unwrap();
+
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    assert_eq!(supervisor.pending_tasks(), vec!["gate"]);
+
+    // Accept the gate
+    supervisor
+        .resume("gate", json!({ "approved": true, "start_done": true }))
+        .unwrap();
+
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    assert_eq!(supervisor.pending_tasks(), vec!["end"]);
+    supervisor.resume("end", json!({ "final": true })).unwrap();
+
+    let _ = exec_task.await.unwrap().unwrap();
+}
+
+#[tokio::test]
+async fn test_approval_gate_rejects() {
+    let nodes = vec![
+        WorkflowNode::new("start", NodeKind::Agent),
+        WorkflowNode::approval_gate("gate"),
+        WorkflowNode::new("end", NodeKind::Agent),
+    ];
+    let edges = vec![
+        WorkflowEdge::new("start", "gate"),
+        WorkflowEdge::new("gate", "end"),
+    ];
+
+    let def = WorkflowDefinition::new("test_approval_rejects", 1, "start", nodes, edges);
+    let validated = def.validate().expect("valid workflow");
+
+    let store = Arc::new(Mutex::new(InMemoryStateStore::default()));
+    let supervisor = Supervisor::new();
+    let router = ConfidenceRouter::new(3);
+
+    let executor = Executor::new(validated, Arc::clone(&store), supervisor.clone(), router);
+
+    let exec_task = tokio::spawn(async move {
+        let mut exec = executor;
+        exec.run(json!({ "init": true })).await
+    });
+
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    supervisor
+        .resume("start", json!({ "start_done": true }))
+        .unwrap();
+
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    assert_eq!(supervisor.pending_tasks(), vec!["gate"]);
+
+    // Reject the gate (missing approved: true)
+    supervisor
+        .resume("gate", json!({ "rejected": true }))
+        .unwrap();
+
+    let err = exec_task.await.unwrap().unwrap_err();
+    assert_eq!(err.to_string(), "execution rejected at approval gate");
+}

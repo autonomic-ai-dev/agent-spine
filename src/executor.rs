@@ -103,6 +103,17 @@ impl<S: WorkflowState> Executor<S> {
                             .delegate(node_name.clone(), payload)
                             .await
                             .map_err(|_| ExecutorError::SupervisorFailed)?,
+                        NodeKind::ApprovalGate => {
+                            let result = supervisor
+                                .delegate(node_name.clone(), payload)
+                                .await
+                                .map_err(|_| ExecutorError::SupervisorFailed)?;
+
+                            if result.get("approved").and_then(Value::as_bool) != Some(true) {
+                                return Err(ExecutorError::ExecutionRejected);
+                            }
+                            result
+                        }
                     };
                     Ok::<_, ExecutorError>((node_name, next_payload))
                 });
@@ -208,4 +219,6 @@ pub enum ExecutorError {
     PoisonedLock,
     #[error("supervisor interaction failed")]
     SupervisorFailed,
+    #[error("execution rejected at approval gate")]
+    ExecutionRejected,
 }

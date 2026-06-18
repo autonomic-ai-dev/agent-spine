@@ -165,6 +165,12 @@ impl WorkflowNode {
         Self::new(name, NodeKind::Agent)
     }
 
+    /// Create an approval gate node.
+    #[must_use]
+    pub fn approval_gate(name: impl Into<String>) -> Self {
+        Self::new(name, NodeKind::ApprovalGate)
+    }
+
     /// Create a node with the given kind.
     #[must_use]
     pub fn new(name: impl Into<String>, kind: NodeKind) -> Self {
@@ -202,6 +208,7 @@ pub enum NodeKind {
     Agent,
     Checkpoint,
     Verify,
+    ApprovalGate,
 }
 
 /// A directed edge between two workflow nodes.
