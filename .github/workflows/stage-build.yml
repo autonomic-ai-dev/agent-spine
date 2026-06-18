@@ -45,7 +45,7 @@ jobs:
             artifact: agent-spine-x86_64-pc-windows-msvc.exe
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Protobuf Compiler (Linux)
         if: runner.os == 'Linux'
@@ -97,7 +97,7 @@ jobs:
           codesign --verify --verbose "dist/${{ matrix.artifact }}"
 
       - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}
           path: dist/${{ matrix.artifact }}
@@ -110,7 +110,7 @@ jobs:
     if: success()
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Resolve package metadata
         id: meta
@@ -118,7 +118,7 @@ jobs:
           version=$(grep '^version' agent-spine/Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - uses: aeswibon/pipeline-compose-export@v1.1.0
+      - uses: aeswibon/pipeline-compose-export@v1.17.1
         with:
           stage_id: build
           outputs: >-
