@@ -9,7 +9,7 @@ use crate::supervisor::Supervisor;
 use crate::workflow::NodeKind;
 use crate::{ExecutionId, StateSnapshot, Transition, ValidatedWorkflow, WorkflowState};
 
-/// Orchestrates the execution of a ValidatedWorkflow.
+/// Orchestrates the execution of a `ValidatedWorkflow`.
 pub struct Executor<S: WorkflowState> {
     workflow: ValidatedWorkflow,
     state_store: Arc<Mutex<S>>,
@@ -19,7 +19,7 @@ pub struct Executor<S: WorkflowState> {
 
 impl<S: WorkflowState> Executor<S> {
     /// Create a new executor for the given workflow.
-    pub fn new(
+    pub const fn new(
         workflow: ValidatedWorkflow,
         state_store: Arc<Mutex<S>>,
         supervisor: Supervisor,
@@ -131,8 +131,7 @@ impl<S: WorkflowState> Executor<S> {
                 ) {
                     RouterAction::Escalate(target) => {
                         println!(
-                            "Confidence Router: Escalating task for node '{}' to frontier model.",
-                            target
+                            "Confidence Router: Escalating task for node '{target}' to frontier model."
                         );
                         escalate = true;
                     }
@@ -144,11 +143,10 @@ impl<S: WorkflowState> Executor<S> {
 
             // Inject escalation hint into payload if needed
             let mut final_payload = next_payload;
-            if escalate {
-                if let Some(obj) = final_payload.as_object_mut() {
+            if escalate
+                && let Some(obj) = final_payload.as_object_mut() {
                     obj.insert("escalation_required".to_string(), Value::Bool(true));
                 }
-            }
 
             current_snapshot = current_snapshot
                 .transition(transition, final_payload)

@@ -11,6 +11,7 @@ pub struct Supervisor {
 }
 
 impl Supervisor {
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -19,7 +20,7 @@ impl Supervisor {
     pub async fn delegate(
         &self,
         node_name: String,
-        payload: Value,
+        _payload: Value,
     ) -> Result<Value, SupervisorError> {
         let (tx, rx) = oneshot::channel();
 
@@ -51,6 +52,7 @@ impl Supervisor {
     }
 
     /// Get a list of currently pending tasks waiting for IDE intervention.
+    #[must_use]
     pub fn pending_tasks(&self) -> Vec<String> {
         self.pending
             .lock()

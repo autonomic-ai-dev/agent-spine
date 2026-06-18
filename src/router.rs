@@ -1,7 +1,7 @@
 use serde_json::Value;
 use std::collections::HashMap;
 
-/// The ConfidenceRouter monitors execution loops and escalates tasks that repeatedly fail verification.
+/// The `ConfidenceRouter` monitors execution loops and escalates tasks that repeatedly fail verification.
 #[derive(Default, Clone, Debug)]
 pub struct ConfidenceRouter {
     /// Maps a node name to its consecutive failure count.
@@ -12,6 +12,7 @@ pub struct ConfidenceRouter {
 
 impl ConfidenceRouter {
     /// Create a new router with a specific failure threshold.
+    #[must_use]
     pub fn new(max_retries: u32) -> Self {
         Self {
             failure_counts: HashMap::new(),
@@ -28,7 +29,7 @@ impl ConfidenceRouter {
         payload: &Value,
     ) -> RouterAction {
         // Simple heuristic: If the payload contains a "success": false field, we treat it as a failure.
-        let is_failure = payload.get("success").and_then(|v| v.as_bool()) == Some(false);
+        let is_failure = payload.get("success").and_then(serde_json::Value::as_bool) == Some(false);
 
         if is_failure {
             // We failed. Which node should be penalized? Usually the node we are transitioning to,

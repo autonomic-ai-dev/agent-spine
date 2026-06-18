@@ -1,5 +1,4 @@
 use std::net::SocketAddr;
-use tokio::net::TcpListener;
 use tonic::{Request, Response, Status, transport::Server};
 
 use crate::supervisor::Supervisor;
@@ -18,7 +17,8 @@ pub struct GrpcSupervisorService {
 }
 
 impl GrpcSupervisorService {
-    pub fn new(supervisor: Supervisor) -> Self {
+    #[must_use]
+    pub const fn new(supervisor: Supervisor) -> Self {
         Self { supervisor }
     }
 }
@@ -32,10 +32,10 @@ impl SupervisorService for GrpcSupervisorService {
         let req = request.into_inner();
 
         let payload = serde_json::from_str(&req.payload_json)
-            .map_err(|e| Status::invalid_argument(format!("Invalid JSON payload: {}", e)))?;
+            .map_err(|e| Status::invalid_argument(format!("Invalid JSON payload: {e}")))?;
 
         match self.supervisor.resume(&req.node_name, payload) {
-            Ok(_) => Ok(Response::new(ResumeResponse {
+            Ok(()) => Ok(Response::new(ResumeResponse {
                 success: true,
                 error_message: String::new(),
             })),

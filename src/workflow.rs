@@ -84,7 +84,7 @@ impl WorkflowDefinition {
 
         if !node_indexes.contains_key(&self.start_node) {
             return Err(WorkflowValidationError::MissingStartNode {
-                name: self.start_node.clone(),
+                name: self.start_node,
             });
         }
 
@@ -144,7 +144,7 @@ pub struct ValidatedWorkflow {
 impl ValidatedWorkflow {
     /// Return the validated workflow definition.
     #[must_use]
-    pub fn definition(&self) -> &WorkflowDefinition {
+    pub const fn definition(&self) -> &WorkflowDefinition {
         &self.definition
     }
 }

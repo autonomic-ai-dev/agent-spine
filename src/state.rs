@@ -47,7 +47,7 @@ impl FileStateStore {
     /// Create a new file-backed state store.
     pub fn new(base_dir: impl Into<PathBuf>) -> Result<Self, StateError> {
         let base_dir = base_dir.into();
-        fs::create_dir_all(&base_dir).map_err(|e| StateError::Io(e))?;
+        fs::create_dir_all(&base_dir).map_err(StateError::Io)?;
         Ok(Self { base_dir })
     }
 
@@ -85,10 +85,10 @@ impl WorkflowState for FileStateStore {
             .create(true)
             .append(true)
             .open(&path)
-            .map_err(|e| StateError::Io(e))?;
+            .map_err(StateError::Io)?;
 
-        let json = serde_json::to_string(&snapshot).map_err(|e| StateError::Serialization(e))?;
-        writeln!(file, "{}", json).map_err(|e| StateError::Io(e))?;
+        let json = serde_json::to_string(&snapshot).map_err(StateError::Serialization)?;
+        writeln!(file, "{json}").map_err(StateError::Io)?;
 
         Ok(())
     }
