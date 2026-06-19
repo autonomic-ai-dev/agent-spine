@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-06-19
+
+### Added
+- **Single-command install**: `install.sh` auto-detects OS/arch, downloads the correct binary from GitHub releases — `curl -fsSL https://raw.githubusercontent.com/aeswibon/agent-spine/main/install.sh | bash`
+- **opencode config**: Project-level opencode configuration with agent-brain MCP integration
+
+### Changed
+- **README**: Replaced multi-step binary install with a single one-liner at the top
+
 ## [0.1.0] - 2026-06-19
 
 ### Added
