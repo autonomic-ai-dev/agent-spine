@@ -6,8 +6,10 @@
 pub mod agent;
 pub mod api;
 pub mod brain_router;
+pub mod cancellation;
 pub(crate) mod condition;
 pub mod executor;
+pub mod idempotency;
 pub mod mcp_bridge;
 pub mod meta_router;
 pub mod router;
@@ -23,6 +25,7 @@ mod transition;
 pub use brain_router::BrainProvenance;
 pub use execution::ExecutionId;
 pub use executor::{ExecutorError, SnapshotConfig};
+pub use idempotency::{IdempotencyRecord, IdempotencyStore, SqliteIdempotencyStore};
 pub use snapshot::StateSnapshot;
 pub use transition::Transition;
 pub use workflow::{

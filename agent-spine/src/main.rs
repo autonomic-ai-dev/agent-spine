@@ -370,10 +370,14 @@ async fn run(command: Command) -> Result<(), Box<dyn std::error::Error>> {
             let agent = agent_spine::agent::LocalAgent::new(supervisor.clone());
             agent.spawn();
 
+            let cancel = agent_spine::cancellation::CancelToken::new();
+            let _signal_task = agent_spine::cancellation::setup_signal_handler(cancel.clone());
+
             let mut executor = agent_spine::executor::Executor::new(validated, store, supervisor);
             if brain {
                 executor = executor.with_brain(None);
             }
+            executor = executor.with_cancel_token(cancel);
 
             let execution_id = executor.run(initial_payload).await?;
             println!("Workflow completed. Execution ID: {}", execution_id);
@@ -506,9 +510,21 @@ async fn run(command: Command) -> Result<(), Box<dyn std::error::Error>> {
                 axum::serve(listener, app).await
             });
 
+            let cancel = agent_spine::cancellation::CancelToken::new();
+            let _signal_task = agent_spine::cancellation::setup_signal_handler(cancel.clone());
+
             tokio::select! {
                 r = grpc_handle => r??,
                 r = dash_handle => r??,
+                _ = async {
+                    let mut watcher = cancel.watch();
+                    loop {
+                        if *watcher.borrow_and_update() { break; }
+                        watcher.changed().await.ok();
+                    }
+                } => {
+                    info!("Shutdown requested, waiting for servers to stop...");
+                }
             }
 
             Ok(())

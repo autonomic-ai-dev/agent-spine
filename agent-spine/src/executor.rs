@@ -6,6 +6,8 @@ use serde_json::Value;
 use thiserror::Error;
 use tracing::Instrument;
 
+use crate::cancellation::CancelToken;
+
 use crate::brain_router::BrainRouter;
 use crate::condition;
 use crate::router::RouterAction;
@@ -136,6 +138,7 @@ pub struct Executor<S: WorkflowState> {
     supervisor: Supervisor,
     brain: Option<BrainRouter>,
     snapshot_config: SnapshotConfig,
+    cancel_token: CancelToken,
 }
 
 impl<S: WorkflowState> Executor<S> {
@@ -151,7 +154,15 @@ impl<S: WorkflowState> Executor<S> {
             supervisor,
             brain: None,
             snapshot_config: SnapshotConfig::default(),
+            cancel_token: CancelToken::new(),
         }
+    }
+
+    /// Attach a cancel token for graceful shutdown.
+    #[must_use]
+    pub fn with_cancel_token(mut self, token: CancelToken) -> Self {
+        self.cancel_token = token;
+        self
     }
 
     /// Attach agent-brain integration to this executor.
@@ -269,6 +280,25 @@ impl<S: WorkflowState> Executor<S> {
         let mut current_node_names = vec![start_node];
 
         loop {
+            // Check for cancellation before each execution cycle
+            if self.cancel_token.is_cancelled() {
+                tracing::warn!("Execution cancelled, saving final snapshot...");
+                let final_transition = Transition::new(current_node_names.join(", "), "CANCELLED");
+                let cancelled_payload = {
+                    let mut p = current_snapshot.payload().clone();
+                    if let Some(obj) = p.as_object_mut() {
+                        obj.insert("cancelled".into(), Value::Bool(true));
+                    }
+                    p
+                };
+                current_snapshot = current_snapshot
+                    .transition(final_transition, cancelled_payload)
+                    .map_err(|_| ExecutorError::InvalidTransition)?;
+                self.prepare_and_append_snapshot(&self.state_store, current_snapshot)?;
+                self.log_trajectory(&exec_id_str, "cancelled", "cancelled", None);
+                break;
+            }
+
             current_node_names.sort();
             current_node_names.dedup();
 
@@ -540,6 +570,8 @@ pub enum ExecutorError {
     SupervisorFailed,
     #[error("execution rejected at approval gate")]
     ExecutionRejected,
+    #[error("execution cancelled by signal")]
+    Cancelled,
     #[error("payload too large: {size} bytes (max {max})")]
     PayloadTooLarge { size: usize, max: usize },
 }

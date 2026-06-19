@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-06-19
+
+### Added
+- **PostgresStateStore**: `sqlx::PgPool`-backed state store with JSONB column, `UNIQUE(execution_id, sequence)` constraint, GIN index — behind `postgres` feature gate
+- **RedisStateStore**: `redis::aio::MultiplexedConnection`-backed store using sorted sets (`ZADD`/`ZRANGE`/`ZCARD`) — behind `redis` feature gate
+- **Execution Cancellation**: `CancelToken` wrapping `tokio::sync::watch<bool>`; `setup_signal_handler()` for SIGINT/SIGTERM; executor checks per-cycle and saves final snapshot with `cancelled: true` marker before graceful exit
+- **Idempotency Keys**: `IdempotencyStore` trait with `InMemoryIdempotencyStore` and `SqliteIdempotencyStore`; `idempotency_keys` table with `key` PK; `check_idempotency()` helper for side-effect deduplication
+- **Concurrency Limits**: `tokio::sync::Semaphore` in `WorkflowManager` — configurable `--max-concurrency`; new submissions queue when limit reached
+- **`--max-concurrency` flag**: Added to `serve` command, propagated to `WorkflowManager`
+
+### Changed
+- `WorkflowManager::new()` delegates to `with_concurrency_limit(db_path, brain_enabled, usize::MAX)` for backward compatibility
+- Async state backends use `block_in_place` + `block_on` inside tokio multi-threaded runtime to satisfy synchronous `WorkflowState` trait
+
 ## [0.6.0] - 2026-06-19
 
 ### Added
