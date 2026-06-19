@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-06-19
+
+### Added
+- **Debate Node Kind**: `NodeKind::Debate` — alternates coder and critic agents in configurable rounds; accepts `debate_config` with `max_rounds`, `coder_prompt`, `critic_prompt`; injects `_node_role` into payload
+- **Vote Node Kind**: `NodeKind::Vote` — runs the same prompt N times (configurable `count`, `temperature`); selects by `majority_vote`; injects `_node_role` into payload
+- **Sandbox Node Kind**: `NodeKind::Sandbox` — node for isolated Docker execution; accepts `sandbox_config` with `image` and `timeout_secs`; injects `_node_role` and `_sandbox_image` into payload
+- **Hydrate Node Kind**: `NodeKind::Hydrate` — static context-gathering phase before agent execution; brain enrichment runs but node is pass-through with no delegate call
+- **Model Escalation**: `escalation_model` field on `WorkflowNode` — after retries exhausted, re-runs with `_escalation_model` injected into payload for frontier model dispatch
+- **Config Structs**: `DebateConfig`, `VoteConfig`, `SandboxConfig` with sensible defaults and YAML serialization
+
+### Changed
+- `NodeKind` gains 5 new variants: `Debate`, `Vote`, `Sandbox`, `Hydrate`
+- `WorkflowNode` gains `escalation_model`, `debate_config`, `vote_config`, `sandbox_config` fields
+- Phase 2 executor handles all new kinds with appropriate delegate semantics; Hydrate is pass-through (no delegate call)
+- Version bumped from `0.8.0` to `0.9.0`
+
 ## [0.8.0] - 2026-06-19
 
 ### Added

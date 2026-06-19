@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// Declarative workflow definition loaded from YAML.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct WorkflowDefinition {
     name: String,
     version: u32,
@@ -173,7 +173,7 @@ impl WorkflowDefinition {
 }
 
 /// A validated workflow state machine.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ValidatedWorkflow {
     definition: WorkflowDefinition,
 }
@@ -187,7 +187,7 @@ impl ValidatedWorkflow {
 }
 
 /// Policy for handling transient node failures.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct RetryPolicy {
     pub max_attempts: u32,
     pub backoff_ms: u64,
@@ -202,8 +202,104 @@ impl Default for RetryPolicy {
     }
 }
 
+/// Configuration for a Debate node — spawns a coder and a critic in alternating rounds.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct DebateConfig {
+    /// Maximum number of debate rounds (each round = coder + critic).
+    #[serde(default = "default_max_rounds")]
+    pub max_rounds: u32,
+    /// System prompt for the coder role.
+    #[serde(default = "default_coder_prompt")]
+    pub coder_prompt: String,
+    /// System prompt for the critic role.
+    #[serde(default = "default_critic_prompt")]
+    pub critic_prompt: String,
+}
+
+fn default_max_rounds() -> u32 {
+    3
+}
+fn default_coder_prompt() -> String {
+    "You are an expert engineer. Implement the requested changes accurately and thoroughly.".into()
+}
+fn default_critic_prompt() -> String {
+    "You are a senior reviewer. Identify bugs, edge cases, security issues, and design problems in the code. Be thorough and specific.".into()
+}
+
+impl Default for DebateConfig {
+    fn default() -> Self {
+        Self {
+            max_rounds: 3,
+            coder_prompt: default_coder_prompt(),
+            critic_prompt: default_critic_prompt(),
+        }
+    }
+}
+
+/// Configuration for a Vote node — runs the same prompt N times and picks
+/// the best output by majority vote or lowest validation error.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct VoteConfig {
+    /// Number of parallel voting runs.
+    #[serde(default = "default_vote_count")]
+    pub count: u32,
+    /// Temperature for the runs (> 0 to introduce diversity).
+    #[serde(default = "default_temperature")]
+    pub temperature: f64,
+    /// Select by majority vote (true) or lowest validation error (false).
+    #[serde(default = "default_vote_method")]
+    pub majority_vote: bool,
+}
+
+fn default_vote_count() -> u32 {
+    3
+}
+fn default_temperature() -> f64 {
+    0.7
+}
+fn default_vote_method() -> bool {
+    true
+}
+
+impl Default for VoteConfig {
+    fn default() -> Self {
+        Self {
+            count: 3,
+            temperature: 0.7,
+            majority_vote: true,
+        }
+    }
+}
+
+/// Configuration for a Sandbox node — runs code in an isolated environment.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct SandboxConfig {
+    /// Docker image to use for the sandbox.
+    #[serde(default = "default_sandbox_image")]
+    pub image: String,
+    /// Timeout in seconds for sandbox execution.
+    #[serde(default = "default_sandbox_timeout")]
+    pub timeout_secs: u64,
+}
+
+fn default_sandbox_image() -> String {
+    "ubuntu:24.04".into()
+}
+fn default_sandbox_timeout() -> u64 {
+    60
+}
+
+impl Default for SandboxConfig {
+    fn default() -> Self {
+        Self {
+            image: "ubuntu:24.04".into(),
+            timeout_secs: 60,
+        }
+    }
+}
+
 /// A node in the declarative workflow graph.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct WorkflowNode {
     name: String,
     kind: NodeKind,
@@ -211,6 +307,19 @@ pub struct WorkflowNode {
     description: Option<String>,
     #[serde(default)]
     retry_policy: Option<RetryPolicy>,
+    /// Optional model escalation — after retries are exhausted, re-run with this
+    /// model identifier (e.g. "claude-4-opus", "gpt-5"). Injected into payload.
+    #[serde(default)]
+    escalation_model: Option<String>,
+    /// Debate node configuration (only meaningful for Debate kind).
+    #[serde(default)]
+    debate_config: Option<DebateConfig>,
+    /// Vote node configuration (only meaningful for Vote kind).
+    #[serde(default)]
+    vote_config: Option<VoteConfig>,
+    /// Sandbox node configuration (only meaningful for Sandbox kind).
+    #[serde(default)]
+    sandbox_config: Option<SandboxConfig>,
 }
 
 impl WorkflowNode {
@@ -244,6 +353,57 @@ impl WorkflowNode {
         Self::new(name, NodeKind::Router)
     }
 
+    /// Create a debate node — alternates coder and critic rounds.
+    #[must_use]
+    pub fn debate(name: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            kind: NodeKind::Debate,
+            description: None,
+            retry_policy: None,
+            escalation_model: None,
+            debate_config: Some(DebateConfig::default()),
+            vote_config: None,
+            sandbox_config: None,
+        }
+    }
+
+    /// Create a vote node — runs same prompt N times, picks best.
+    #[must_use]
+    pub fn vote(name: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            kind: NodeKind::Vote,
+            description: None,
+            retry_policy: None,
+            escalation_model: None,
+            debate_config: None,
+            vote_config: Some(VoteConfig::default()),
+            sandbox_config: None,
+        }
+    }
+
+    /// Create a sandbox node — runs in isolated Docker environment.
+    #[must_use]
+    pub fn sandbox(name: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            kind: NodeKind::Sandbox,
+            description: None,
+            retry_policy: None,
+            escalation_model: None,
+            debate_config: None,
+            vote_config: None,
+            sandbox_config: Some(SandboxConfig::default()),
+        }
+    }
+
+    /// Create a hydration node — gathers static context before agent execution.
+    #[must_use]
+    pub fn hydrate(name: impl Into<String>) -> Self {
+        Self::new(name, NodeKind::Hydrate)
+    }
+
     /// Create a node with the given kind.
     #[must_use]
     pub fn new(name: impl Into<String>, kind: NodeKind) -> Self {
@@ -252,6 +412,10 @@ impl WorkflowNode {
             kind,
             description: None,
             retry_policy: None,
+            escalation_model: None,
+            debate_config: None,
+            vote_config: None,
+            sandbox_config: None,
         }
     }
 
@@ -285,6 +449,30 @@ impl WorkflowNode {
     pub fn description(&self) -> Option<&str> {
         self.description.as_deref()
     }
+
+    /// Return the escalation model, if set.
+    #[must_use]
+    pub fn escalation_model(&self) -> Option<&str> {
+        self.escalation_model.as_deref()
+    }
+
+    /// Return the debate config (only meaningful for Debate nodes).
+    #[must_use]
+    pub fn debate_config(&self) -> Option<&DebateConfig> {
+        self.debate_config.as_ref()
+    }
+
+    /// Return the vote config (only meaningful for Vote nodes).
+    #[must_use]
+    pub fn vote_config(&self) -> Option<&VoteConfig> {
+        self.vote_config.as_ref()
+    }
+
+    /// Return the sandbox config (only meaningful for Sandbox nodes).
+    #[must_use]
+    pub fn sandbox_config(&self) -> Option<&SandboxConfig> {
+        self.sandbox_config.as_ref()
+    }
 }
 
 /// The role a node plays in the workflow.
@@ -304,6 +492,20 @@ pub enum NodeKind {
     /// Injects state variables into the payload for dynamic branching.
     /// The agent returns variables used in conditional edge expressions.
     Router,
+    /// Alternates between coder and critic agents in iterative rounds.
+    /// Each round: coder produces output, critic reviews, feedback passed
+    /// back to coder. Stops after configurable max rounds or critic approval.
+    Debate,
+    /// Runs the same prompt N times with temperature > 0 for diversity.
+    /// Selects the best output by majority vote or lowest validation error.
+    Vote,
+    /// Spins up an ephemeral sandbox (Docker container) where the agent
+    /// writes and executes scratchpad scripts to verify behavior.
+    Sandbox,
+    /// Gathers static context from the environment (git diff, test output,
+    /// lint results, file contents) and injects raw data into the payload
+    /// before the agent executes.
+    Hydrate,
 }
 
 impl std::fmt::Display for NodeKind {
@@ -316,6 +518,10 @@ impl std::fmt::Display for NodeKind {
             Self::Fork => write!(f, "fork"),
             Self::Join => write!(f, "join"),
             Self::Router => write!(f, "router"),
+            Self::Debate => write!(f, "debate"),
+            Self::Vote => write!(f, "vote"),
+            Self::Sandbox => write!(f, "sandbox"),
+            Self::Hydrate => write!(f, "hydrate"),
         }
     }
 }

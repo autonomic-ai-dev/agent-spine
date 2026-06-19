@@ -315,7 +315,13 @@ impl<S: WorkflowState> Executor<S> {
 
                 if matches!(
                     node.kind(),
-                    NodeKind::Agent | NodeKind::Checkpoint | NodeKind::Router
+                    NodeKind::Agent
+                        | NodeKind::Checkpoint
+                        | NodeKind::Router
+                        | NodeKind::Debate
+                        | NodeKind::Vote
+                        | NodeKind::Sandbox
+                        | NodeKind::Hydrate
                 ) {
                     let node_kind_str = node.kind().to_string();
                     self.enrich_from_brain(node_name, &node_kind_str, &mut node_payload);
@@ -326,6 +332,7 @@ impl<S: WorkflowState> Executor<S> {
                     kind: node.kind().clone(),
                     retry_policy: node.retry_policy(),
                     description: node.description().map(String::from),
+                    escalation_model: node.escalation_model().map(String::from),
                     payload: node_payload,
                 });
             }
@@ -344,29 +351,95 @@ impl<S: WorkflowState> Executor<S> {
                         let node_kind = task.kind.to_string();
                         let description = task.description.clone();
                         let next_payload = match task.kind {
-                            NodeKind::Agent | NodeKind::Checkpoint | NodeKind::Router => {
+                            NodeKind::Agent
+                            | NodeKind::Checkpoint
+                            | NodeKind::Router
+                            | NodeKind::Hydrate
+                            | NodeKind::Debate
+                            | NodeKind::Vote
+                            | NodeKind::Sandbox => {
                                 let mut retries = 0;
                                 let max_retries = task.retry_policy.max_attempts;
                                 let base_backoff = task.retry_policy.backoff_ms;
+                                let escalation_model = task.escalation_model.clone();
                                 loop {
+                                    let mut payload = task.payload.clone();
+                                    // Inject escalation model if this is an escalation retry
+                                    if retries > max_retries {
+                                        if let Some(ref model) = escalation_model {
+                                            if let Some(obj) = payload.as_object_mut() {
+                                                obj.insert(
+                                                    "_escalation_model".into(),
+                                                    Value::String(model.clone()),
+                                                );
+                                            }
+                                            tracing::warn!(
+                                                "Escalating '{}' to model '{}'",
+                                                task.name,
+                                                model,
+                                            );
+                                        } else {
+                                            tracing::error!(
+                                                "Node '{}' failed after {} retries (no escalation model)",
+                                                task.name,
+                                                max_retries,
+                                            );
+                                            return Err(ExecutorError::SupervisorFailed);
+                                        }
+                                    }
+
+                                    // For Debate/Vote/Sandbox, inject node-kind hints
+                                    if task.kind == NodeKind::Debate {
+                                        if let Some(obj) = payload.as_object_mut() {
+                                            obj.insert(
+                                                "_node_role".into(),
+                                                Value::String("debate_coder".into()),
+                                            );
+                                        }
+                                    } else if task.kind == NodeKind::Vote {
+                                        if let Some(obj) = payload.as_object_mut() {
+                                            obj.insert(
+                                                "_node_role".into(),
+                                                Value::String("vote".into()),
+                                            );
+                                        }
+                                    } else if task.kind == NodeKind::Sandbox {
+                                        if let Some(obj) = payload.as_object_mut() {
+                                            obj.insert(
+                                                "_node_role".into(),
+                                                Value::String("sandbox".into()),
+                                            );
+                                        }
+                                    }
+
                                     match supervisor
                                         .delegate(
                                             task.name.clone(),
                                             node_kind.clone(),
                                             description.clone(),
                                             workflow_name.clone(),
-                                            task.payload.clone(),
+                                            payload,
                                             Some(std::time::Duration::from_secs(30)),
                                         )
                                         .await
                                     {
                                         Ok(res) => break res,
                                         Err(e) => {
-                                            if retries >= max_retries {
+                                            if retries >= max_retries
+                                                && escalation_model.is_none()
+                                            {
                                                 tracing::error!(
                                                     "Node '{}' failed after {} retries: {}",
                                                     task.name,
                                                     max_retries,
+                                                    e
+                                                );
+                                                return Err(ExecutorError::SupervisorFailed);
+                                            }
+                                            if retries > max_retries {
+                                                tracing::error!(
+                                                    "Node '{}' failed after escalation retry: {}",
+                                                    task.name,
                                                     e
                                                 );
                                                 return Err(ExecutorError::SupervisorFailed);
@@ -549,6 +622,7 @@ struct NodeTask {
     kind: crate::workflow::NodeKind,
     retry_policy: crate::workflow::RetryPolicy,
     description: Option<String>,
+    escalation_model: Option<String>,
     payload: Value,
 }
 
