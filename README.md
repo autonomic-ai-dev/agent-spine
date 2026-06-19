@@ -7,6 +7,9 @@ agent-spine is a local-first workflow supervisor that runs YAML pipelines for AI
 Rust is the engine; Claude Code / Cursor / Codex are the workers.
 
 ```bash
+# One command — auto-detects your platform, downloads, and installs
+curl -fsSL https://raw.githubusercontent.com/aeswibon/agent-spine/main/install.sh | bash
+
 # One-time setup — creates a 10-node dev-pipeline workflow
 agent-spine init
 
@@ -100,16 +103,15 @@ agent-spine run workflow.yaml
 ### Binary install
 
 ```bash
-# Download from https://github.com/aeswibon/agent-spine/releases
-# macOS / Linux
-curl -L https://github.com/aeswibon/agent-spine/releases/download/v0.2.0/agent-spine-{target}.tar.gz | tar xz
-sudo mv agent-spine /usr/local/bin/
+curl -fsSL https://raw.githubusercontent.com/aeswibon/agent-spine/main/install.sh | bash
+```
 
-# One-time setup
-agent-spine init
+Auto-detects your OS/arch, downloads the correct binary from the latest release, and installs to `/usr/local/bin`. Supports **macOS** (x86_64, aarch64), **Linux** (x86_64, aarch64), and **Windows** (x86_64, via Git BASH/MSYS2).
 
-# Run the example workflow
-agent-spine run dev-pipeline.yaml
+Override the install directory or pin a specific version:
+
+```bash
+INSTALL_DIR=~/.local/bin AGENT_SPINE_VERSION=0.1.0 curl -fsSL https://raw.githubusercontent.com/aeswibon/agent-spine/main/install.sh | bash
 ```
 
 ### Build from source
