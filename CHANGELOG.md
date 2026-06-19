@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-06-19
+
+### Added
+- **Context Provenance**: Snapshot metadata records `context_id`, `route_confidence`, `skills_used`, `agents_loaded` from each brain round-trip — injected as `_brain_provenance` in snapshot payloads
+- **BrainProvenance**: Structured provenance struct replacing raw response injection
+- **Per-Node BrainRouter**: Every agent/checkpoint node calls `agent-brain route_task` before execution, not only at run start
+- **Outcome Feedback**: `store_trajectory` called with `task_kind` metadata for all completed nodes
+- **Payload Limits**: `SnapshotConfig.max_payload_bytes` — oversize payloads produce `PayloadTooLarge` error before persist
+- **Secrets Redaction**: `SnapshotConfig.secrets_redact` — configurable field patterns stripped from snapshots at write time (defaults: api_key, token, password, secret, private_key, authorization)
+- **`--brain` flag**: `agent-spine run --brain` enables agent-brain integration from CLI
+- **`payload_mut()` accessor**: Mutable payload access on `StateSnapshot` for in-place redaction
+
+### Changed
+- **enrich_from_brain**: Now uses `BrainProvenance` struct instead of raw `RouteTaskResponse`
+- **log_trajectory**: Passes `task_kind` for richer learning loop metadata
+- **Executor::run()**: All snapshot writes go through `prepare_and_append_snapshot` for redaction + size enforcement
+
 ## [0.3.0] - 2026-06-19
 
 ### Added

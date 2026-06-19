@@ -1,5 +1,6 @@
 use std::sync::{Arc, Mutex};
 
+use regex::Regex;
 use serde_json::Value;
 use thiserror::Error;
 
@@ -9,6 +10,105 @@ use crate::state::StateError;
 use crate::supervisor::Supervisor;
 use crate::workflow::NodeKind;
 use crate::{ExecutionId, StateSnapshot, Transition, ValidatedWorkflow, WorkflowState};
+
+/// Configuration for snapshot payload limits and secrets redaction.
+#[derive(Clone, Debug)]
+pub struct SnapshotConfig {
+    /// Maximum payload size in bytes before truncation or rejection.
+    /// `0` means unlimited (default).
+    pub max_payload_bytes: usize,
+    /// Field name patterns (substring match) to redact from payload at write time.
+    /// The field value is replaced with `"[REDACTED]"`.
+    pub secrets_redact: Vec<String>,
+    /// Pre-compiled regex patterns derived from `secrets_redact`.
+    redact_regexes: Vec<Regex>,
+}
+
+impl Default for SnapshotConfig {
+    fn default() -> Self {
+        Self {
+            max_payload_bytes: 0,
+            secrets_redact: vec![
+                "api_key".into(),
+                "token".into(),
+                "password".into(),
+                "secret".into(),
+                "private_key".into(),
+                "authorization".into(),
+            ],
+            redact_regexes: Vec::new(),
+        }
+    }
+}
+
+impl SnapshotConfig {
+    /// Build config and pre-compile redaction regexes.
+    #[must_use]
+    pub fn new(max_payload_bytes: usize, secrets_redact: Vec<String>) -> Self {
+        let mut config = Self {
+            max_payload_bytes,
+            secrets_redact,
+            redact_regexes: Vec::new(),
+        };
+        config.compile_regexes();
+        config
+    }
+
+    fn compile_regexes(&mut self) {
+        self.redact_regexes = self
+            .secrets_redact
+            .iter()
+            .filter_map(|p| Regex::new(&format!("(?i){}", regex::escape(p))).ok())
+            .collect();
+    }
+
+    /// Redact matching fields in a payload value (mutates in place).
+    pub fn redact(&self, value: &mut Value) {
+        match value {
+            Value::Object(map) => {
+                let mut to_redact: Vec<String> = Vec::new();
+                for key in map.keys() {
+                    for re in &self.redact_regexes {
+                        if re.is_match(key) {
+                            to_redact.push(key.clone());
+                            break;
+                        }
+                    }
+                }
+                for key in &to_redact {
+                    if let Some(v) = map.get_mut(key) {
+                        *v = Value::String("[REDACTED]".into());
+                    }
+                }
+                for v in map.values_mut() {
+                    self.redact(v);
+                }
+            }
+            Value::Array(arr) => {
+                for v in arr.iter_mut() {
+                    self.redact(v);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Check whether payload exceeds the configured limit.
+    /// Returns `None` if within bounds (or unlimited).
+    pub fn check_payload_size(&self, payload: &Value) -> Option<ExecutorError> {
+        if self.max_payload_bytes == 0 {
+            return None;
+        }
+        let size = serde_json::to_string(payload).map(|s| s.len()).unwrap_or(0);
+        if size > self.max_payload_bytes {
+            return Some(ExecutorError::PayloadTooLarge {
+                size,
+                max: self.max_payload_bytes,
+            });
+        }
+        None
+    }
+}
 
 fn merge_json(a: &mut Value, b: &Value) {
     if a.is_object() && b.is_object() {
@@ -32,6 +132,7 @@ pub struct Executor<S: WorkflowState> {
     state_store: Arc<Mutex<S>>,
     supervisor: Supervisor,
     brain: Option<BrainRouter>,
+    snapshot_config: SnapshotConfig,
 }
 
 impl<S: WorkflowState> Executor<S> {
@@ -46,6 +147,7 @@ impl<S: WorkflowState> Executor<S> {
             state_store,
             supervisor,
             brain: None,
+            snapshot_config: SnapshotConfig::default(),
         }
     }
 
@@ -57,30 +159,62 @@ impl<S: WorkflowState> Executor<S> {
         self
     }
 
-    fn append_snapshot(
+    /// Set snapshot configuration (payload limits, secrets redaction).
+    #[must_use]
+    pub fn with_snapshot_config(mut self, config: SnapshotConfig) -> Self {
+        self.snapshot_config = config;
+        self
+    }
+
+    fn prepare_and_append_snapshot(
+        &self,
         store: &Arc<Mutex<S>>,
-        snapshot: StateSnapshot,
+        mut snapshot: StateSnapshot,
     ) -> Result<(), ExecutorError> {
+        // Apply secrets redaction before persisting
+        let payload = snapshot.payload_mut();
+        self.snapshot_config.redact(payload);
+
+        // Check payload size limits
+        if let Some(err) = self.snapshot_config.check_payload_size(payload) {
+            return Err(err);
+        }
+
         let mut guard = store.lock().map_err(|_| ExecutorError::PoisonedLock)?;
         guard.append(snapshot).map_err(ExecutorError::State)?;
         Ok(())
     }
 
-    fn enrich_from_brain(&mut self, node_name: &str, node_payload: &mut Value) {
+    fn enrich_from_brain(&mut self, node_name: &str, node_kind: &str, node_payload: &mut Value) {
         if let Some(brain) = self.brain.as_mut() {
-            if let Some(resp) = brain.enrich_payload(node_name, "Agent", None, node_payload) {
-                if let Ok(brain_value) = serde_json::to_value(&resp) {
+            let description = self
+                .workflow
+                .definition()
+                .nodes()
+                .iter()
+                .find(|n| n.name() == node_name)
+                .and_then(|n| n.description());
+            if let Some(provenance) =
+                brain.get_provenance(node_name, node_kind, description, node_payload)
+            {
+                if let Ok(prov_value) = serde_json::to_value(&provenance) {
                     if let Some(obj) = node_payload.as_object_mut() {
-                        obj.insert("_brain".into(), brain_value);
+                        obj.insert("_brain_provenance".into(), prov_value);
                     }
                 }
             }
         }
     }
 
-    fn log_trajectory(&mut self, exec_id: &str, node_id: &str, outcome: &str) {
+    fn log_trajectory(
+        &mut self,
+        exec_id: &str,
+        node_id: &str,
+        outcome: &str,
+        task_kind: Option<&str>,
+    ) {
         if let Some(brain) = self.brain.as_mut() {
-            brain.store_trajectory(exec_id, node_id, outcome, None);
+            brain.store_trajectory_full(exec_id, node_id, outcome, task_kind, None);
         }
     }
 
@@ -106,9 +240,9 @@ impl<S: WorkflowState> Executor<S> {
 
         let mut current_snapshot = StateSnapshot::initial(execution_id, initial_payload);
 
-        Self::append_snapshot(&self.state_store, current_snapshot.clone())?;
+        self.prepare_and_append_snapshot(&self.state_store, current_snapshot.clone())?;
 
-        self.log_trajectory(&exec_id_str, "init", "escalated");
+        self.log_trajectory(&exec_id_str, "init", "started", None);
 
         let nodes = self.workflow.definition().nodes().to_vec();
         let edges = self.workflow.definition().edges().to_vec();
@@ -132,7 +266,8 @@ impl<S: WorkflowState> Executor<S> {
                 let mut node_payload = current_snapshot.payload().clone();
 
                 if matches!(node.kind(), NodeKind::Agent | NodeKind::Checkpoint) {
-                    self.enrich_from_brain(node_name, &mut node_payload);
+                    let node_kind_str = node.kind().to_string();
+                    self.enrich_from_brain(node_name, &node_kind_str, &mut node_payload);
                 }
 
                 node_tasks.push(NodeTask {
@@ -246,7 +381,11 @@ impl<S: WorkflowState> Executor<S> {
                 } else {
                     "success"
                 };
-                self.log_trajectory(&exec_id_str, node_name, outcome);
+                let node_kind = nodes
+                    .iter()
+                    .find(|n| n.name() == *node_name)
+                    .map(|n| n.kind().to_string());
+                self.log_trajectory(&exec_id_str, node_name, outcome, node_kind.as_deref());
             }
 
             // Merge payloads from all parallel branches
@@ -294,9 +433,9 @@ impl<S: WorkflowState> Executor<S> {
                     .transition(transition, final_payload)
                     .map_err(|_| ExecutorError::InvalidTransition)?;
 
-                Self::append_snapshot(&self.state_store, current_snapshot)?;
+                self.prepare_and_append_snapshot(&self.state_store, current_snapshot)?;
 
-                self.log_trajectory(&exec_id_str, "complete", "success");
+                self.log_trajectory(&exec_id_str, "complete", "success", None);
                 break;
             }
 
@@ -307,7 +446,7 @@ impl<S: WorkflowState> Executor<S> {
                 .transition(transition, final_payload)
                 .map_err(|_| ExecutorError::InvalidTransition)?;
 
-            Self::append_snapshot(&self.state_store, current_snapshot.clone())?;
+            self.prepare_and_append_snapshot(&self.state_store, current_snapshot.clone())?;
 
             current_node_names = next_node_names;
         }
@@ -343,4 +482,6 @@ pub enum ExecutorError {
     SupervisorFailed,
     #[error("execution rejected at approval gate")]
     ExecutionRejected,
+    #[error("payload too large: {size} bytes (max {max})")]
+    PayloadTooLarge { size: usize, max: usize },
 }

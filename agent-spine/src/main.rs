@@ -47,6 +47,9 @@ enum Command {
         /// Path to SQLite database
         #[arg(short, long, default_value = "state.db")]
         db: PathBuf,
+        /// Enable agent-brain routing and enrichment.
+        #[arg(short, long)]
+        brain: bool,
     },
     /// Inspect the history of a specific execution.
     Inspect {
@@ -333,6 +336,7 @@ async fn run(command: Command) -> Result<(), Box<dyn std::error::Error>> {
             workflow,
             payload,
             db,
+            brain,
         } => {
             let validated = WorkflowDefinition::from_path(workflow)?.validate()?;
             let initial_payload = serde_json::from_str(&payload)?;
@@ -346,6 +350,9 @@ async fn run(command: Command) -> Result<(), Box<dyn std::error::Error>> {
             agent.spawn();
 
             let mut executor = agent_spine::executor::Executor::new(validated, store, supervisor);
+            if brain {
+                executor = executor.with_brain(None);
+            }
 
             let execution_id = executor.run(initial_payload).await?;
             println!("Workflow completed. Execution ID: {}", execution_id);

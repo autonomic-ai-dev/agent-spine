@@ -84,6 +84,11 @@ impl StateSnapshot {
     pub const fn payload(&self) -> &Value {
         &self.payload
     }
+
+    #[must_use]
+    pub fn payload_mut(&mut self) -> &mut Value {
+        &mut self.payload
+    }
 }
 
 #[derive(Debug, Error)]

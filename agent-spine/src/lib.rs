@@ -17,7 +17,9 @@ mod execution;
 mod snapshot;
 mod transition;
 
+pub use brain_router::BrainProvenance;
 pub use execution::ExecutionId;
+pub use executor::{ExecutorError, SnapshotConfig};
 pub use snapshot::StateSnapshot;
 pub use transition::Transition;
 pub use workflow::{

@@ -1,10 +1,27 @@
 use std::path::PathBuf;
 
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tracing;
 
 use crate::mcp_bridge::{self, McpBridge, RouteLimits, RouteTaskResponse};
 use crate::router::{ConfidenceRouter, RouterAction};
+
+/// Structured provenance metadata from an agent-brain route_task call.
+///
+/// Injected into snapshot payloads as `_brain_provenance` to enable
+/// audit and inspection of which context influenced each node execution.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct BrainProvenance {
+    /// The agent-brain log_id for this routing call.
+    pub context_id: String,
+    /// Confidence score from the brain router (0.0 – 1.0).
+    pub route_confidence: f64,
+    /// Skill names that the brain recommended for this node.
+    pub skills_used: Vec<String>,
+    /// Agent names that the brain loaded for this node.
+    pub agents_loaded: Vec<String>,
+}
 
 /// An optional enhancement over `ConfidenceRouter` that delegates escalation
 /// decisions to agent-brain's `route_task` MCP tool.
@@ -161,6 +178,59 @@ impl BrainRouter {
                 tracing::debug!("brain enrich_payload skipped: {e}");
                 None
             }
+        }
+    }
+
+    /// Return structured provenance from a brain routing call for a node.
+    ///
+    /// This is the v0.4 replacement for `enrich_payload` — it returns
+    /// a lighter, structured metadata bundle that gets injected into
+    /// snapshot payloads for auditability.
+    pub fn get_provenance(
+        &mut self,
+        node_name: &str,
+        node_kind: &str,
+        description: Option<&str>,
+        payload: &Value,
+    ) -> Option<BrainProvenance> {
+        self.enrich_payload(node_name, node_kind, description, payload)
+            .map(|resp| BrainProvenance {
+                context_id: resp.log_id,
+                route_confidence: resp.route_confidence,
+                skills_used: resp
+                    .recommended_skills
+                    .into_iter()
+                    .map(|s| s.name)
+                    .collect(),
+                agents_loaded: resp
+                    .recommended_agents
+                    .into_iter()
+                    .map(|a| a.name)
+                    .collect(),
+            })
+    }
+
+    /// Store a trajectory with full metadata (task_kind included).
+    pub fn store_trajectory_full(
+        &mut self,
+        workflow_id: &str,
+        node_id: &str,
+        outcome: &str,
+        task_kind: Option<&str>,
+        notes: Option<&str>,
+    ) {
+        if let Some(bridge) = self.bridge.as_mut()
+            && let rt = tokio::runtime::Handle::try_current()
+            && let Ok(handle) = rt
+        {
+            let _ = handle.block_on(bridge.store_trajectory(
+                workflow_id,
+                node_id,
+                outcome,
+                None,
+                task_kind,
+                notes,
+            ));
         }
     }
 
