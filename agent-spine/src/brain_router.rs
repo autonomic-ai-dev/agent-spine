@@ -1,27 +1,12 @@
 use std::path::PathBuf;
 
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tracing;
 
 use crate::mcp_bridge::{self, McpBridge, RouteLimits, RouteTaskResponse};
 use crate::router::{ConfidenceRouter, RouterAction};
 
-/// Structured provenance metadata from an agent-brain route_task call.
-///
-/// Injected into snapshot payloads as `_brain_provenance` to enable
-/// audit and inspection of which context influenced each node execution.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct BrainProvenance {
-    /// The agent-brain log_id for this routing call.
-    pub context_id: String,
-    /// Confidence score from the brain router (0.0 – 1.0).
-    pub route_confidence: f64,
-    /// Skill names that the brain recommended for this node.
-    pub skills_used: Vec<String>,
-    /// Agent names that the brain loaded for this node.
-    pub agents_loaded: Vec<String>,
-}
+pub use agent_body_core::BrainProvenance;
 
 /// An optional enhancement over `ConfidenceRouter` that delegates escalation
 /// decisions to agent-brain's `route_task` MCP tool.
