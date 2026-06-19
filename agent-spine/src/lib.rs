@@ -1,5 +1,12 @@
+#![allow(
+    clippy::collapsible_if,
+    clippy::io_other_error,
+    clippy::too_many_arguments
+)]
 pub mod api;
+pub mod brain_router;
 pub mod executor;
+pub mod mcp_bridge;
 pub mod router;
 pub mod state;
 pub mod supervisor;

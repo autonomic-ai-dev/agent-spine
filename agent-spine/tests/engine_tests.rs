@@ -281,3 +281,28 @@ async fn test_supervisor_timeout_and_retry() {
     // For now, we will just abort the task and consider the compilation check sufficient for the backoff logic.
     exec_task.abort();
 }
+#[cfg(test)]
+mod send_check {
+    use std::sync::{Arc, Mutex};
+    use agent_spine::executor::Executor;
+    use agent_spine::router::ConfidenceRouter;
+    use agent_spine::state::InMemoryStateStore;
+    use agent_spine::supervisor::Supervisor;
+    use agent_spine::workflow::{NodeKind, WorkflowDefinition, WorkflowEdge, WorkflowNode};
+    
+    #[test]
+    fn check_executor_send() {
+        fn assert_send<T: Send>() {}
+        let nodes = vec![
+            WorkflowNode::new("start", NodeKind::Agent),
+        ];
+        let edges = vec![WorkflowEdge::new("start", "start")];
+        let def = WorkflowDefinition::new("test", 1, "start", nodes, edges);
+        let validated = def.validate().unwrap();
+        let store = Arc::new(Mutex::new(InMemoryStateStore::default()));
+        let supervisor = Supervisor::new();
+        let router = ConfidenceRouter::new(3);
+        let _executor = Executor::new(validated, store, supervisor, router);
+        assert_send::<Executor<InMemoryStateStore>>();
+    }
+}

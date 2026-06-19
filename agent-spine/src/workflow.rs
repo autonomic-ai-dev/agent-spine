@@ -224,6 +224,12 @@ impl WorkflowNode {
     pub const fn kind(&self) -> &NodeKind {
         &self.kind
     }
+
+    /// Return the node description.
+    #[must_use]
+    pub fn description(&self) -> Option<&str> {
+        self.description.as_deref()
+    }
 }
 
 /// The role a node plays in the workflow.

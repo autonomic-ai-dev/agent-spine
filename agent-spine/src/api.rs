@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use tonic::{Request, Response, Status};
 
 use crate::supervisor::Supervisor;
-use crate::{ExecutionId, WorkflowState};
+use crate::WorkflowState;
 
 pub mod pb {
     tonic::include_proto!("agent_spine");

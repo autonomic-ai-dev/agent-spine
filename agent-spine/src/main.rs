@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
+use agent_spine::mcp_bridge::{McpBridge, RouteLimits};
 use agent_spine::WorkflowDefinition;
 
 #[derive(Debug, Parser)]
@@ -52,6 +53,11 @@ enum Command {
         #[arg(short, long, default_value = "state.db")]
         db: PathBuf,
     },
+    /// Interact with the agent-brain MCP server.
+    Brain {
+        #[command(subcommand)]
+        action: BrainCommand,
+    },
     /// Serve the Live Dashboard API.
     Serve {
         /// Path to SQLite database
@@ -61,6 +67,19 @@ enum Command {
         #[arg(short, long, default_value_t = 3000)]
         port: u16,
     },
+}
+
+#[derive(Debug, Subcommand)]
+enum BrainCommand {
+    /// Check if agent-brain is reachable.
+    Health,
+    /// Send a route_task query and show the response.
+    Route {
+        /// The message to route through agent-brain.
+        message: String,
+    },
+    /// Show agent-brain index and status info.
+    Status,
 }
 
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, Registry};
@@ -193,6 +212,7 @@ async fn run(command: Command) -> Result<(), Box<dyn std::error::Error>> {
             println!("Replay complete. Final sequence: {}", current_snapshot.sequence());
             Ok(())
         }
+        Command::Brain { action } => run_brain(action).await,
         Command::Serve { db, port } => {
             info!("Starting agent-spine gRPC server on port {}", port);
 
@@ -231,6 +251,98 @@ async fn run(command: Command) -> Result<(), Box<dyn std::error::Error>> {
                 .serve(addr)
                 .await?;
 
+            Ok(())
+        }
+    }
+}
+
+async fn run_brain(command: BrainCommand) -> Result<(), Box<dyn std::error::Error>> {
+    match command {
+        BrainCommand::Health => {
+            match McpBridge::connect(None).await {
+                Ok(mut bridge) => {
+                    bridge.health().await?;
+                    println!("✓ agent-brain is reachable");
+                    // Drop bridge to kill the child process
+                    drop(bridge);
+                    Ok(())
+                }
+                Err(e) => {
+                    eprintln!("✗ agent-brain unreachable: {e}");
+                    eprintln!();
+                    eprintln!("  Make sure agent-brain is installed and in PATH.");
+                    eprintln!("  Set BRAIN_PATH env var for a custom location.");
+                    eprintln!("  Common locations:");
+                    eprintln!("    ~/.agent_brain/bin/agent-brain");
+                    eprintln!("    /usr/local/bin/agent-brain");
+                    eprintln!("    PATH resolution");
+                    std::process::exit(1);
+                }
+            }
+        }
+        BrainCommand::Route { message } => {
+            let mut bridge = McpBridge::connect(None).await?;
+            println!("Routing message to agent-brain...\n");
+
+            let resp = bridge
+                .route_task(&message, None, &[], 500, RouteLimits::default(), None, None)
+                .await?;
+
+            println!("=== Route Response ===");
+            println!("Phase:       {}", resp.recommended_phase);
+            println!("Confidence:  {:.3}", resp.route_confidence);
+            println!("Escalate:    {}", resp.escalate_recommended);
+            println!("Briefing:    {}", resp.briefing);
+            println!("Cache hit:   {}", resp.cache_hit);
+            println!("Latency:     {}ms", resp.latency_ms);
+            println!("Index total: {}", resp.index_total);
+            println!();
+
+            if !resp.recommended_agents.is_empty() {
+                println!("--- Recommended Agents ---");
+                for a in &resp.recommended_agents {
+                    println!("  {:<20} score={:.3}  {}", a.name, a.score, a.rationale);
+                }
+                println!();
+            }
+
+            if !resp.recommended_skills.is_empty() {
+                println!("--- Recommended Skills ---");
+                for s in &resp.recommended_skills {
+                    println!("  {:<30} score={:.3}", s.name, s.score);
+                }
+                println!();
+            }
+
+            if !resp.applicable_rules.is_empty() {
+                println!("--- Applicable Rules ---");
+                for r in &resp.applicable_rules {
+                    println!("  {} (score={:.3})", r.topic, r.score);
+                }
+                println!();
+            }
+
+            if !resp.must_apply.is_empty() {
+                println!("--- Must Apply ---");
+                for m in &resp.must_apply {
+                    println!("  {}: {}", m.topic, m.text);
+                }
+                println!();
+            }
+
+            Ok(())
+        }
+        BrainCommand::Status => {
+            let mut bridge = McpBridge::connect(None).await?;
+            let info = bridge.health().await?;
+            println!("agent-brain status:");
+            println!("  Server:  {}", info.name);
+            println!("  Version: {}", info.version);
+
+            let facts = bridge.list_memory(5).await.unwrap_or_default();
+            println!("  Memory:  {} facts stored (showing up to 5)", facts.len());
+
+            drop(bridge);
             Ok(())
         }
     }

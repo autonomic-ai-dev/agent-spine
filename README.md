@@ -4,7 +4,7 @@ Agent Spine is a local-first, stateful workflow engine for supervising AI coding
 
 The project is **not** another terminal-bound agent crew. It targets a lightweight Rust supervisor that integrates with tools like Claude Code and Cursor, runs declarative YAML workflows, and records every state transition for inspection, replay, and intervention.
 
-> **Status:** Phase 1–2 in progress. The execution engine, state stores, gRPC supervisor, confidence router, parallel fan-out/fan-in, and a Svelte dashboard are implemented. CLI `run`/`replay`/`inspect`, agent-brain routing, and production persistence adapters are not yet wired end-to-end.
+> **Status:** Phase 1–2 in progress. The execution engine, state stores, gRPC supervisor, confidence router, agent-brain MCP bridge, parallel fan-out/fan-in, and a Svelte dashboard are implemented. CLI `run`/`replay`/`inspect` and production persistence adapters are not yet wired end-to-end.
 
 Planning docs and the repository audit live in [`docs/superpowers/`](docs/superpowers/) (local only, not committed).
 
@@ -26,7 +26,7 @@ Agent Spine is organized around four layers:
 ```mermaid
 flowchart TB
     subgraph layers["Execution layers"]
-        info["Information<br/>agent-brain context routing<br/><i>planned</i>"]
+        info["Information<br/>agent-brain context routing<br/>MCP bridge"]
         structure["Structure<br/>typed bounded transitions"]
         reasoning["Reasoning depth<br/>debate · voting · search<br/><i>planned</i>"]
         verify["Mechanical verification<br/>compile · test · lint · schema<br/><i>partial</i>"]
@@ -39,10 +39,12 @@ flowchart TB
 
 ```mermaid
 flowchart TB
+    brain["agent-brain<br/>context routing · memory<br/>MCP stdio server"]
     dashboard["Dashboard<br/>Svelte · Connect · gRPC-Web"]
     sup_api["Supervisor API<br/>resume · pending tasks"]
     dash_api["Dashboard API<br/>list · history"]
     executor["Executor<br/>state machine · fan-out/fan-in<br/>retries · ApprovalGate · router"]
+    brain_router["BrainRouter<br/>MCP bridge · fallback router<br/>enrich · trajectory"]
     supervisor["Supervisor<br/>IDE hooks · pause/resume"]
     state["WorkflowState<br/>InMemory · JSONL · SQLite"]
 
@@ -50,6 +52,9 @@ flowchart TB
     dashboard -->|gRPC-Web| dash_api
     sup_api --> executor
     dash_api --> state
+    executor --> brain_router
+    brain_router <-->|JSON-RPC 2.0| brain
+    brain_router --> supervisor
     executor --> supervisor
     executor --> state
 ```
@@ -61,6 +66,8 @@ flowchart TB
 | `workflow` | YAML workflow definitions, validation, `NodeKind` (`Agent`, `Checkpoint`, `Verify`, `ApprovalGate`) |
 | `executor` | Async state-machine traversal with parallel branches, fan-in merge, retries, and routing |
 | `supervisor` | Pauses agent nodes and waits for IDE `resume()` via gRPC |
+| `brain_router` | MCP bridge to agent-brain for context routing, enrichment, and trajectory logging |
+| `mcp_bridge` | JSON-RPC 2.0 client over child-process stdio (MCP protocol) |
 | `router` | `ConfidenceRouter` — tracks verification failures and sets `escalation_required` |
 | `state` | Append-only `WorkflowState` trait with in-memory, JSONL file, and SQLite adapters |
 | `api` | gRPC services generated from `proto/supervisor.proto` |
@@ -88,7 +95,6 @@ flowchart LR
     subgraph todo["Not yet"]
         cli_run["CLI run/replay/inspect"]
         serve_exec["Executor in serve"]
-        brain["agent-brain routing"]
         pg["Postgres / Redis stores"]
         otel["OpenTelemetry export"]
         ws["WebSocket live DAG"]
@@ -104,6 +110,8 @@ flowchart LR
 - **Human-in-the-loop gates** via `ApprovalGate` nodes and supervisor resume
 - **Built-in retries** with exponential backoff before supervisor failure (hardcoded policy today)
 - **Confidence routing** after repeated verification failures
+- **agent-brain MCP bridge** — `BrainRouter` with lazy-connect MCP client, payload enrichment, trajectory logging, and graceful fallback to `ConfidenceRouter`
+- **`brain` CLI subcommand** — `health`, `route`, `status` for interacting with agent-brain
 - **State stores**: `InMemoryStateStore`, `FileStateStore` (JSONL), `SqliteStateStore`
 - **gRPC supervisor + dashboard API** with gRPC-Web and CORS for browser clients
 - **Live dashboard** (Svelte) — execution list, history viewer, pending-task resume
@@ -113,7 +121,6 @@ flowchart LR
 
 - CLI `run`, `inspect`, and `replay` commands
 - Wiring the executor into `agent-spine serve` (server exposes APIs but does not execute workflows today)
-- `agent-brain` context routing per node
 - Postgres / Redis state adapters
 - OpenTelemetry export (`tracing` spans exist; no OTel pipeline)
 - Configurable `RetryPolicy` in workflow YAML
@@ -131,7 +138,7 @@ flowchart TB
     root --> gh[".github/<br/>CI + release pipelines"]
 
     engine --> proto["proto/"]
-    engine --> src["src/<br/>workflow · executor · supervisor<br/>router · state · api"]
+    engine --> src["src/<br/>workflow · executor · supervisor<br/>brain_router · mcp_bridge<br/>router · state · api"]
     engine --> tests["tests/"]
 ```
 
@@ -166,6 +173,69 @@ bun install
 bun run dev      # dev server (expects gRPC backend on :3000)
 bun run check    # type check
 bun run build    # production build
+```
+
+## Using v0.1
+
+### Workflow validation
+
+```bash
+# Validate a workflow definition
+cargo run -p agent-spine -- validate path/to/workflow.yaml
+```
+
+### brain CLI (agent-brain integration)
+
+Requires `agent-brain` on your PATH (or set `BRAIN_PATH` env var).
+
+```bash
+# Health check — verify agent-brain is reachable
+cargo run -p agent-spine -- brain health
+
+# Route a task through agent-brain for context/routing
+cargo run -p agent-spine -- brain route "implement user authentication"
+
+# Show brain connection status
+cargo run -p agent-spine -- brain status
+```
+
+### Programmatic usage (Rust)
+
+```rust
+use std::sync::{Arc, Mutex};
+use agent_spine::{
+    Executor, Supervisor, ConfidenceRouter,
+    workflow::{WorkflowDefinition, WorkflowNode, WorkflowEdge, NodeKind},
+    state::InMemoryStateStore,
+};
+
+// Define a workflow
+let workflow = WorkflowDefinition::new("my_pipeline", 1, "start", nodes, edges)
+    .validate()?;
+
+// Wire dependencies
+let store = Arc::new(Mutex::new(InMemoryStateStore::default()));
+let supervisor = Supervisor::new();
+let router = ConfidenceRouter::new(3);
+
+// Executor with brain (lazy-connects to agent-brain on first use)
+let mut executor = Executor::with_brain(
+    validated, store, supervisor, router,
+    Some("/path/to/agent-brain".into()),
+);
+
+// Run the workflow
+let exec_id = executor.run(serde_json::json!({ "input": "data" })).await?;
+```
+
+### Dashboard
+
+```bash
+# Start the server with gRPC and dashboard API
+cargo run -p agent-spine -- serve --db state.db --port 3000
+
+# Open dashboard (separate terminal)
+cd dashboard && bun install && bun run dev
 ```
 
 ### Development checks
