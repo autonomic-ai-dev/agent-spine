@@ -45,26 +45,41 @@ impl Default for CancelToken {
     }
 }
 
-/// Set up OS signal handlers for SIGINT and SIGTERM.
+#[cfg(unix)]
+async fn wait_for_signal() {
+    use tokio::signal::unix;
+
+    let mut term =
+        unix::signal(unix::SignalKind::terminate()).expect("failed to install SIGTERM handler");
+    let mut int =
+        unix::signal(unix::SignalKind::interrupt()).expect("failed to install SIGINT handler");
+
+    tokio::select! {
+        _ = term.recv() => {
+            tracing::info!("Received SIGTERM, initiating graceful shutdown...");
+        }
+        _ = int.recv() => {
+            tracing::info!("Received SIGINT, initiating graceful shutdown...");
+        }
+    }
+}
+
+#[cfg(not(unix))]
+async fn wait_for_signal() {
+    tokio::signal::ctrl_c()
+        .await
+        .expect("failed to install Ctrl+C handler");
+    tracing::info!("Received Ctrl+C, initiating graceful shutdown...");
+}
+
+/// Set up OS signal handlers for termination signals (SIGINT / SIGTERM on
+/// Unix, Ctrl+C on Windows).
 ///
-/// When either signal is received, the provided `CancelToken` is triggered
+/// When the signal is received, the provided `CancelToken` is triggered
 /// and a message is logged. Returns a join handle for the signal task.
 pub fn setup_signal_handler(cancel: CancelToken) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-            .expect("failed to install SIGTERM handler");
-        let mut int = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())
-            .expect("failed to install SIGINT handler");
-
-        tokio::select! {
-            _ = term.recv() => {
-                tracing::info!("Received SIGTERM, initiating graceful shutdown...");
-            }
-            _ = int.recv() => {
-                tracing::info!("Received SIGINT, initiating graceful shutdown...");
-            }
-        }
-
+        wait_for_signal().await;
         cancel.cancel();
     })
 }
