@@ -1,17 +1,15 @@
-use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use serde_json::Value;
 use thiserror::Error;
 
 use crate::brain_router::BrainRouter;
-use crate::router::{ConfidenceRouter, RouterAction};
+use crate::router::RouterAction;
 use crate::state::StateError;
 use crate::supervisor::Supervisor;
 use crate::workflow::NodeKind;
 use crate::{ExecutionId, StateSnapshot, Transition, ValidatedWorkflow, WorkflowState};
 
-/// Helper to deeply merge two JSON values.
 fn merge_json(a: &mut Value, b: &Value) {
     if a.is_object() && b.is_object() {
         if let (Some(a_obj), Some(b_obj)) = (a.as_object_mut(), b.as_object()) {
@@ -33,48 +31,32 @@ pub struct Executor<S: WorkflowState> {
     workflow: ValidatedWorkflow,
     state_store: Arc<Mutex<S>>,
     supervisor: Supervisor,
-    #[allow(dead_code)]
-    router: ConfidenceRouter,
-    brain: BrainRouter,
+    brain: Option<BrainRouter>,
 }
 
 impl<S: WorkflowState> Executor<S> {
-    /// Create a new executor for the given workflow (without agent-brain).
+    /// Create a new executor (without agent-brain).
     pub fn new(
         workflow: ValidatedWorkflow,
         state_store: Arc<Mutex<S>>,
         supervisor: Supervisor,
-        router: ConfidenceRouter,
     ) -> Self {
-        let workflow_name = workflow.definition().name().to_owned();
         Self {
             workflow,
             state_store,
             supervisor,
-            router,
-            brain: BrainRouter::new(workflow_name, None),
+            brain: None,
         }
     }
 
-    /// Create a new executor with agent-brain integration.
-    pub fn with_brain(
-        workflow: ValidatedWorkflow,
-        state_store: Arc<Mutex<S>>,
-        supervisor: Supervisor,
-        router: ConfidenceRouter,
-        brain_cwd: Option<PathBuf>,
-    ) -> Self {
-        let workflow_name = workflow.definition().name().to_owned();
-        Self {
-            workflow,
-            state_store,
-            supervisor,
-            router,
-            brain: BrainRouter::new(workflow_name, brain_cwd),
-        }
+    /// Attach agent-brain integration to this executor.
+    #[must_use]
+    pub fn with_brain(mut self, brain_cwd: Option<std::path::PathBuf>) -> Self {
+        let name = self.workflow.definition().name().to_owned();
+        self.brain = Some(BrainRouter::new(name, brain_cwd));
+        self
     }
 
-    /// Non-async helper to append a snapshot — avoids `MutexGuard` across await boundaries.
     fn append_snapshot(
         store: &Arc<Mutex<S>>,
         snapshot: StateSnapshot,
@@ -84,34 +66,57 @@ impl<S: WorkflowState> Executor<S> {
         Ok(())
     }
 
+    fn enrich_from_brain(&mut self, node_name: &str, node_payload: &mut Value) {
+        if let Some(brain) = self.brain.as_mut() {
+            if let Some(resp) = brain.enrich_payload(node_name, "Agent", None, node_payload) {
+                if let Ok(brain_value) = serde_json::to_value(&resp) {
+                    if let Some(obj) = node_payload.as_object_mut() {
+                        obj.insert("_brain".into(), brain_value);
+                    }
+                }
+            }
+        }
+    }
+
+    fn log_trajectory(&mut self, exec_id: &str, node_id: &str, outcome: &str) {
+        if let Some(brain) = self.brain.as_mut() {
+            brain.store_trajectory(exec_id, node_id, outcome, None);
+        }
+    }
+
+    fn evaluate_brain_route(
+        &mut self,
+        source: &str,
+        target: &str,
+        payload: &Value,
+    ) -> RouterAction {
+        if let Some(brain) = self.brain.as_mut() {
+            brain.evaluate_transition(source, target, payload)
+        } else {
+            RouterAction::Continue
+        }
+    }
+
     /// Execute the workflow from start to finish.
     pub async fn run(&mut self, initial_payload: Value) -> Result<ExecutionId, ExecutorError> {
         let execution_id = ExecutionId::new();
         let exec_id_str = execution_id.to_string();
-        tracing::info!(
-            "Starting execution of workflow '{}'",
-            self.workflow.definition().name()
-        );
+        let workflow_name = self.workflow.definition().name().to_owned();
+        tracing::info!("Starting execution of workflow '{}'", workflow_name);
 
         let mut current_snapshot = StateSnapshot::initial(execution_id, initial_payload);
 
-        // Persist initial state (non-async to avoid MutexGuard Send issue)
         Self::append_snapshot(&self.state_store, current_snapshot.clone())?;
 
-        // Log execution start trajectory
-        self.brain
-            .store_trajectory(&exec_id_str, "init", "escalated", None)
-            .await;
+        self.log_trajectory(&exec_id_str, "init", "escalated");
 
-        let definition = self.workflow.definition();
-        let nodes = definition.nodes();
-        let edges = definition.edges();
+        let nodes = self.workflow.definition().nodes().to_vec();
+        let edges = self.workflow.definition().edges().to_vec();
+        let start_node = self.workflow.definition().start_node().to_owned();
 
-        let mut current_node_names = vec![definition.start_node().to_owned()];
+        let mut current_node_names = vec![start_node];
 
-        // State machine execution
         loop {
-            // Deduplicate to prevent double-execution of the same node in a level
             current_node_names.sort();
             current_node_names.dedup();
 
@@ -126,16 +131,8 @@ impl<S: WorkflowState> Executor<S> {
 
                 let mut node_payload = current_snapshot.payload().clone();
 
-                // Enrich payload with brain recommendations before delegation
-                if matches!(node.kind(), NodeKind::Agent | NodeKind::Checkpoint)
-                    && let Some(resp) = self
-                        .brain
-                        .enrich_payload(node_name, "Agent", node.description(), &node_payload)
-                        .await
-                    && let Some(obj) = node_payload.as_object_mut()
-                    && let Ok(brain_value) = serde_json::to_value(&resp)
-                {
-                    obj.insert("_brain".to_string(), brain_value);
+                if matches!(node.kind(), NodeKind::Agent | NodeKind::Checkpoint) {
+                    self.enrich_from_brain(node_name, &mut node_payload);
                 }
 
                 node_tasks.push(NodeTask {
@@ -235,9 +232,7 @@ impl<S: WorkflowState> Executor<S> {
                 } else {
                     "success"
                 };
-                self.brain
-                    .store_trajectory(&exec_id_str, node_name, outcome, None)
-                    .await;
+                self.log_trajectory(&exec_id_str, node_name, outcome);
             }
 
             // Merge payloads from all parallel branches
@@ -246,7 +241,7 @@ impl<S: WorkflowState> Executor<S> {
                 merge_json(&mut final_payload, payload);
             }
 
-            // ── Phase 5: Determine next nodes (with brain routing) ──
+            // ── Phase 5: Determine next nodes (with optional brain routing) ──
             let mut next_node_names = Vec::new();
             let mut escalate = false;
 
@@ -260,12 +255,7 @@ impl<S: WorkflowState> Executor<S> {
                 for edge in outgoing {
                     let next_node_name = edge.to().to_owned();
 
-                    // Use BrainRouter first, fallback to ConfidenceRouter
-                    match self
-                        .brain
-                        .evaluate_transition(node_name, &next_node_name, payload)
-                        .await
-                    {
+                    match self.evaluate_brain_route(node_name, &next_node_name, payload) {
                         RouterAction::Escalate(target) => {
                             tracing::warn!("Brain Router: Escalating task for node '{}'.", target);
                             escalate = true;
@@ -292,9 +282,7 @@ impl<S: WorkflowState> Executor<S> {
 
                 Self::append_snapshot(&self.state_store, current_snapshot)?;
 
-                self.brain
-                    .store_trajectory(&exec_id_str, "complete", "success", None)
-                    .await;
+                self.log_trajectory(&exec_id_str, "complete", "success");
                 break;
             }
 

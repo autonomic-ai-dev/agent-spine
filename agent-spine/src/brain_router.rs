@@ -14,13 +14,11 @@ pub struct BrainRouter {
     bridge: Option<McpBridge>,
     fallback: ConfidenceRouter,
     workflow_name: String,
-    #[allow(dead_code)]
     cwd: Option<PathBuf>,
     connect_attempted: bool,
 }
 
 impl BrainRouter {
-    /// Create a new BrainRouter that will lazily connect to agent-brain.
     pub fn new(workflow_name: impl Into<String>, cwd: Option<PathBuf>) -> Self {
         Self {
             bridge: None,
@@ -32,22 +30,28 @@ impl BrainRouter {
     }
 
     /// Evaluate a workflow transition, potentially escalating via agent-brain.
-    pub async fn evaluate_transition(
+    /// This is best-effort; when brain is unavailable, it falls back immediately.
+    pub fn evaluate_transition(
         &mut self,
         source_node: &str,
         target_node: &str,
         payload: &Value,
     ) -> RouterAction {
-        // Try to connect lazily on first use (only if cwd is configured).
         if self.bridge.is_none() && !self.connect_attempted && self.cwd.is_some() {
             self.connect_attempted = true;
-            match McpBridge::connect(self.cwd.as_deref()).await {
-                Ok(bridge) => {
-                    tracing::info!("connected to agent-brain for workflow routing");
-                    self.bridge = Some(bridge);
-                }
-                Err(e) => {
-                    tracing::warn!("agent-brain not available, using fallback router: {e}");
+            let rt = tokio::runtime::Handle::try_current();
+            match rt {
+                Ok(handle) => match handle.block_on(McpBridge::connect(self.cwd.as_deref())) {
+                    Ok(bridge) => {
+                        tracing::info!("connected to agent-brain for workflow routing");
+                        self.bridge = Some(bridge);
+                    }
+                    Err(e) => {
+                        tracing::warn!("agent-brain not available, using fallback router: {e}");
+                    }
+                },
+                Err(_) => {
+                    tracing::warn!("no tokio runtime available, using fallback router");
                 }
             }
         }
@@ -60,7 +64,7 @@ impl BrainRouter {
                 payload,
             );
 
-            match Self::call_route_task(bridge, &message).await {
+            match Self::call_route_task(bridge, &message) {
                 Ok(resp) => {
                     if resp.escalate_recommended || resp.route_confidence < 0.4 {
                         tracing::info!(
@@ -70,8 +74,6 @@ impl BrainRouter {
                         );
                         return RouterAction::Escalate(target_node.to_owned());
                     }
-
-                    // Log brain's briefing for observability
                     if !resp.briefing.is_empty() {
                         tracing::debug!("brain route: {}", resp.briefing);
                     }
@@ -79,7 +81,7 @@ impl BrainRouter {
                 }
                 Err(e) => {
                     tracing::warn!("brain route_task failed: {e}, using fallback");
-                    self.bridge = None; // force reconnect next time
+                    self.bridge = None;
                     self.fallback
                         .evaluate_transition(source_node, target_node, payload)
                 }
@@ -90,31 +92,30 @@ impl BrainRouter {
         }
     }
 
-    /// Call route_task on the bridge with a timeout and error handling.
-    async fn call_route_task(
+    fn call_route_task(
         bridge: &mut McpBridge,
         message: &str,
     ) -> Result<RouteTaskResponse, mcp_bridge::BridgeError> {
-        bridge
-            .route_task(
-                message,
-                None, // cwd — resolved at connect time
-                &[],  // open_files
-                300,  // max_tokens — tight budget for routing
-                RouteLimits {
-                    agents: 1,
-                    skills: 2,
-                    rules: 3,
-                    memory: 0,
-                },
-                Some("implementing"),
-                None,
-            )
-            .await
+        let rt = tokio::runtime::Handle::try_current()
+            .map_err(|_| mcp_bridge::BridgeError::NotConnected)?;
+        rt.block_on(bridge.route_task(
+            message,
+            None,
+            &[],
+            300,
+            RouteLimits {
+                agents: 1,
+                skills: 2,
+                rules: 3,
+                memory: 0,
+            },
+            Some("implementing"),
+            None,
+        ))
     }
 
-    /// Store a trajectory record in agent-brain.
-    pub async fn store_trajectory(
+    /// Store a trajectory record in agent-brain (best-effort).
+    pub fn store_trajectory(
         &mut self,
         execution_id: &str,
         node_id: &str,
@@ -122,16 +123,22 @@ impl BrainRouter {
         notes: Option<&str>,
     ) {
         if let Some(bridge) = self.bridge.as_mut()
-            && let Err(e) = bridge
-                .store_trajectory(execution_id, node_id, outcome, None, None, notes)
-                .await
+            && let rt = tokio::runtime::Handle::try_current()
+            && let Ok(handle) = rt
         {
-            tracing::debug!("brain store_trajectory skipped: {e}");
+            let _ = handle.block_on(bridge.store_trajectory(
+                execution_id,
+                node_id,
+                outcome,
+                None,
+                None,
+                notes,
+            ));
         }
     }
 
-    /// Enrich a node payload with brain recommendations before delegation.
-    pub async fn enrich_payload(
+    /// Enrich a node payload with brain recommendations (best-effort).
+    pub fn enrich_payload(
         &mut self,
         node_name: &str,
         node_kind: &str,
@@ -148,7 +155,7 @@ impl BrainRouter {
             payload,
         );
 
-        match Self::call_route_task(bridge, &message).await {
+        match Self::call_route_task(bridge, &message) {
             Ok(resp) => Some(resp),
             Err(e) => {
                 tracing::debug!("brain enrich_payload skipped: {e}");
@@ -157,7 +164,6 @@ impl BrainRouter {
         }
     }
 
-    /// Check whether the bridge is connected.
     pub fn is_connected(&self) -> bool {
         self.bridge.is_some()
     }

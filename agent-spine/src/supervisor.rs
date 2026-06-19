@@ -4,10 +4,15 @@ use std::sync::{Arc, Mutex};
 use thiserror::Error;
 use tokio::sync::oneshot;
 
+struct PendingTask {
+    sender: oneshot::Sender<Value>,
+    payload: Value,
+}
+
 /// The Supervisor manages paused graph executions, delegating them to IDE agents.
 #[derive(Default, Clone)]
 pub struct Supervisor {
-    pending: Arc<Mutex<HashMap<String, oneshot::Sender<Value>>>>,
+    pending: Arc<Mutex<HashMap<String, PendingTask>>>,
 }
 
 impl Supervisor {
@@ -17,11 +22,11 @@ impl Supervisor {
     }
 
     /// Suspend execution and wait for the IDE agent to provide the next payload.
-    #[tracing::instrument(skip(self, _payload), fields(node = %node_name))]
+    #[tracing::instrument(skip(self, payload), fields(node = %node_name))]
     pub async fn delegate(
         &self,
         node_name: String,
-        _payload: Value,
+        payload: Value,
         timeout: Option<std::time::Duration>,
     ) -> Result<Value, SupervisorError> {
         let (tx, rx) = oneshot::channel();
@@ -31,7 +36,13 @@ impl Supervisor {
             if pending.contains_key(&node_name) {
                 return Err(SupervisorError::AlreadyPending(node_name));
             }
-            pending.insert(node_name.clone(), tx);
+            pending.insert(
+                node_name.clone(),
+                PendingTask {
+                    sender: tx,
+                    payload,
+                },
+            );
             tracing::info!("Agent task suspended and waiting for delegation result");
         }
 
@@ -68,7 +79,7 @@ impl Supervisor {
     /// Provide the result for a pending task, resuming its execution in the executor.
     #[tracing::instrument(skip(self, result), fields(node = %node_name))]
     pub fn resume(&self, node_name: &str, result: Value) -> Result<(), SupervisorError> {
-        let tx = {
+        let task = {
             let mut pending = self.pending.lock().map_err(|_| SupervisorError::Poisoned)?;
             pending
                 .remove(node_name)
@@ -76,7 +87,24 @@ impl Supervisor {
         };
 
         tracing::info!("Resuming agent task with external result");
-        tx.send(result)
+        task.sender
+            .send(result)
+            .map_err(|_| SupervisorError::Dropped(node_name.to_owned()))
+    }
+
+    /// Auto-resolve a pending task with the given result payload.
+    #[tracing::instrument(skip(self), fields(node = %node_name))]
+    pub fn auto_resolve(&self, node_name: &str, result: Value) -> Result<(), SupervisorError> {
+        let task = {
+            let mut pending = self.pending.lock().map_err(|_| SupervisorError::Poisoned)?;
+            pending
+                .remove(node_name)
+                .ok_or_else(|| SupervisorError::NotPending(node_name.to_owned()))?
+        };
+
+        tracing::info!("Auto-resolving agent task for '{}'", node_name);
+        task.sender
+            .send(result)
             .map_err(|_| SupervisorError::Dropped(node_name.to_owned()))
     }
 
@@ -87,6 +115,15 @@ impl Supervisor {
             .lock()
             .map(|guard| guard.keys().cloned().collect())
             .unwrap_or_default()
+    }
+
+    /// Get the stored payload for a pending task, if available.
+    #[must_use]
+    pub fn pending_payload(&self, node_name: &str) -> Option<Value> {
+        self.pending
+            .lock()
+            .ok()
+            .and_then(|guard| guard.get(node_name).map(|t| t.payload.clone()))
     }
 }
 

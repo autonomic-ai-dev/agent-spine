@@ -3,6 +3,7 @@
     clippy::io_other_error,
     clippy::too_many_arguments
 )]
+pub mod agent;
 pub mod api;
 pub mod brain_router;
 pub mod executor;

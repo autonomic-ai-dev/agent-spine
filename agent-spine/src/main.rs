@@ -260,10 +260,11 @@ async fn run(command: Command) -> Result<(), Box<dyn std::error::Error>> {
             let store = std::sync::Arc::new(std::sync::Mutex::new(store));
 
             let supervisor = agent_spine::supervisor::Supervisor::new();
-            let router = agent_spine::router::ConfidenceRouter::new(3);
 
-            let mut executor =
-                agent_spine::executor::Executor::new(validated, store, supervisor, router);
+            let agent = agent_spine::agent::LocalAgent::new(supervisor.clone());
+            agent.spawn();
+
+            let mut executor = agent_spine::executor::Executor::new(validated, store, supervisor);
 
             let execution_id = executor.run(initial_payload).await?;
             println!("Workflow completed. Execution ID: {}", execution_id);
@@ -479,36 +480,72 @@ db = "state.db"
 max_failures = 3
 "##;
 
-const EXAMPLE_WORKFLOW: &str = r##"name: example-pipeline
+const EXAMPLE_WORKFLOW: &str = r##"name: dev-pipeline
 version: 1
-start: fetch-data
+start: plan
 
 nodes:
-  - name: fetch-data
+  - name: plan
+    kind: Agent
+    retry:
+      max_attempts: 2
+      backoff_ms: 500
+
+  - name: lint
+    kind: Verify
+
+  - name: test
+    kind: Agent
+    retry:
+      max_attempts: 2
+      backoff_ms: 1000
+
+  - name: build
     kind: Agent
     retry:
       max_attempts: 3
-      backoff_ms: 200
+      backoff_ms: 500
 
-  - name: validate
-    kind: Verify
+  - name: security-scan
+    kind: Agent
 
-  - name: approve
+  - name: review-gate
     kind: ApprovalGate
 
-  - name: process
+  - name: stage
     kind: Agent
 
-  - name: report
+  - name: integration-test
     kind: Agent
+    retry:
+      max_attempts: 2
+      backoff_ms: 1000
+
+  - name: deploy
+    kind: Agent
+
+  - name: verify-deploy
+    kind: Verify
 
 edges:
-  - from: fetch-data
-    to: validate
-  - from: validate
-    to: approve
-  - from: approve
-    to: process
-  - from: process
-    to: report
+  - from: plan
+    to: lint
+  - from: lint
+    to: test
+  - from: lint
+    to: security-scan
+  - from: test
+    to: build
+  - from: security-scan
+    to: review-gate
+  - from: build
+    to: review-gate
+  - from: review-gate
+    to: stage
+  - from: stage
+    to: integration-test
+  - from: integration-test
+    to: deploy
+  - from: deploy
+    to: verify-deploy
 "##;
