@@ -360,10 +360,12 @@ impl EventBus for NatsEventBus {
 
     async fn subscribe(&self, subject: &str) -> broadcast::Receiver<Event> {
         let (tx, rx) = broadcast::channel(256);
-        let sub = self.client.subscribe(subject.to_string()).await;
+        let Ok(mut sub) = self.client.subscribe(subject.to_string()).await else {
+            tracing::error!(subject, "nats subscribe failed");
+            return rx;
+        };
 
         tokio::spawn(async move {
-            let mut sub = sub;
             while let Some(msg) = sub.next().await {
                 if let Ok(event) = serde_json::from_slice::<Event>(&msg.payload) {
                     let _ = tx.send(event);
