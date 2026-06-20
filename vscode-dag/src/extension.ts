@@ -3,6 +3,9 @@ import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
 
+const executionsRoot = () =>
+  path.join(os.homedir(), ".autonomic", "logs", "spine", "executions");
+
 interface DagNode {
   sequence: number;
   transition?: string;
@@ -42,7 +45,7 @@ class DagProvider implements vscode.TreeDataProvider<DagTreeItem> {
   }
 
   getChildren(): Thenable<DagTreeItem[]> {
-    const root = path.join(os.homedir(), ".autonomic", "logs", "spine", "executions");
+    const root = executionsRoot();
     if (!fs.existsSync(root)) {
       return Promise.resolve([
         new DagTreeItem("(no executions yet)", "", vscode.TreeItemCollapsibleState.None),
@@ -106,6 +109,11 @@ th { background: var(--vscode-editor-selectionBackground); }
 export function activate(context: vscode.ExtensionContext): void {
   const provider = new DagProvider();
   vscode.window.registerTreeDataProvider("autonomic.dagExplorer", provider);
+
+  const root = executionsRoot();
+  if (fs.existsSync(root)) {
+    fs.watch(root, { persistent: false }, () => provider.refresh());
+  }
 
   context.subscriptions.push(
     vscode.commands.registerCommand("autonomic.refreshDag", () => provider.refresh()),
