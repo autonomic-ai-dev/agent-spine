@@ -46,7 +46,7 @@ Every non-trivial AI coding task needs structure — but most teams improvise it
 
 ---
 
-## What you get
+## What you get (main features)
 
 | Feature | Why use it |
 |---------|------------|
@@ -63,7 +63,7 @@ Every non-trivial AI coding task needs structure — but most teams improvise it
 
 ---
 
-## CLI
+## Commands
 
 | Command | Description |
 |---------|-------------|
@@ -104,7 +104,7 @@ flowchart TD
 
 ---
 
-## Quick start
+## Quick Install
 
 ### Binary install
 
@@ -117,13 +117,13 @@ Auto-detects your OS/arch, downloads the correct binary from the latest release,
 Override the install directory or pin a specific version:
 
 ```bash
-INSTALL_DIR=~/.local/bin AGENT_SPINE_VERSION=0.1.0 curl -fsSL https://raw.githubusercontent.com/aeswibon/agent-spine/main/install.sh | bash
+INSTALL_DIR=~/.local/bin AGENT_SPINE_VERSION=0.16.2 curl -fsSL https://raw.githubusercontent.com/autonomic-ai-dev/agent-spine/master/scripts/install.sh | bash
 ```
 
-### Build from source
+Or from source:
 
 ```bash
-git clone https://github.com/aeswibon/agent-spine.git && cd agent-spine
+git clone https://github.com/autonomic-ai-dev/agent-spine.git && cd agent-spine
 cargo build --release
 ./target/release/agent-spine init
 ./target/release/agent-spine run dev-pipeline.yaml
@@ -184,7 +184,7 @@ cargo test --workspace --all-features
 
 - **protoc** — gRPC codegen (<https://grpc.io/docs/protoc-installation/>)
 - **bun** — dashboard dev (<https://bun.sh>) — optional
-- **agent-brain** — MCP routing & memory (<https://github.com/aeswibon/agent-brain>) — optional
+- **agent-brain** — MCP routing & memory (<https://github.com/autonomic-ai-dev/agent-brain>) — optional
 
 ---
 
