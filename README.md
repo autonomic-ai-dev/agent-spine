@@ -1,65 +1,102 @@
-# agent-spine
+# agent-spine — Deterministic Workflow Engine for AI Agents
 
-**Deterministic workflow engine for AI agents — YAML pipelines, state snapshots, and an HTTP event bus.**
+**YAML-defined DAG pipelines, immutable state snapshots, parallel execution, and a gRPC event bus for multi-organ coordination.**
 
-Part of the **[Autonomic AI](https://github.com/autonomic-ai-dev/agent-body)** ecosystem. Runs standalone or as the orchestration hub that peripheral organs register with on port **3100**.
+agent-spine is the **central nervous system** of the Autonomic AI ecosystem. It defines **what happens when** — a deterministic DAG of nodes (agent, approval, checkpoint, verify) that executes in order, records every state transition as an immutable snapshot, and supports fan-out/fan-in parallelism with human-in-the-loop approval gates.
 
-| Standalone | Integrated |
-|------------|------------|
-| `agent-spine run workflow.yaml` | Budget gate via agent-heart |
-| `agent-spine serve` (event bus) | Organs publish `*.executed`, `*.indexed`, … |
-| Local state stores | `[spine]` in `~/.autonomic/config.toml` |
+Unlike shell scripts, CI pipelines, or Makefiles, agent-spine is purpose-built for **agent-driven workflows**: it supports retry policies with exponential backoff, confidence-based escalation, optional MCP bridging to agent-brain for per-node context routing, and a pluggable state store (InMemory, JSONL, SQLite).
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/autonomic-ai-dev/agent-spine/master/scripts/install.sh | bash
-agent-spine init
-agent-spine run dev-pipeline.yaml
+---
+
+## Core Concept
+
+Most AI coding workflows are improvised ad-hoc: "run lint, then tests, then build, then review." But improvisation means no audit trail, no parallelism, no retry discipline, and no way to reproduce what happened.
+
+agent-spine treats workflows as **first-class artifacts** — versioned YAML definitions with explicit node types, edges, and policies. Every execution produces an **append-only, immutable chain of snapshots** linked by parent references. You can replay any execution to see exactly what happened and compare branches.
+
+The key bet: **deterministic execution beats probabilistic prompting for control flow.** agent-spine follows the DAG, not the model's mood.
+
+```mermaid
+flowchart TD
+    Start["agent-spine run workflow.yaml"] --> Validate["Validate YAML schema"]
+    Validate --> Spawn["Spawn LocalAgent executor"]
+    Spawn --> Walk["Executor walks the graph"]
+
+    Walk --> AgentNode["Agent Node"]
+    AgentNode --> Resolve["LocalAgent auto-resolves"]
+    Resolve --> Snap["Record immutable snapshot"]
+
+    Walk --> Approval["ApprovalGate Node"]
+    Approval --> HITL["Human-in-the-loop<br>Approve / Reject"]
+
+    Walk --> Parallel["Fan-out (parallel edges)"]
+    Parallel --> Join["JoinSet merges branches"]
+
+    Snap --> Next["Next node in DAG"]
+    HITL --> Next
+    Join --> Next
+
+    Next --> Finish["Execution complete"]
+    Finish --> Store["State Store<br>SQLite / JSONL / InMemory"]
 ```
+
+---
+
+## Standalone vs Integrated
+
+| Mode | What you type | What happens |
+|------|--------------|--------------|
+| **Standalone** | `agent-spine run dev-pipeline.yaml` | Execute a workflow YAML with embedded LocalAgent |
+| **Standalone** | `agent-spine serve` | Start gRPC event bus + dashboard API on `:3100` |
+| **Standalone** | `agent-spine validate workflow.yaml` | Schema validation without execution |
+| **Integrated** | agent-spine `:3100` | Peripheral organs register as event subscribers |
+| **Integrated** | BrainRouter | MCP bridge to agent-brain for context per node |
+| **Integrated** | agent-heart budget gate | Spine checks `/budget/check` before LLM-heavy nodes |
+
+In standalone mode, agent-spine is a local workflow runner. In integrated mode, it becomes the **event backbone** — organs register, publish domain events (`*.executed`, `*.indexed`, `*.failed`), and agent-spine orchestrates multi-organ pipelines.
 
 ---
 
 ## Why agent-spine?
 
-Every non-trivial AI coding task needs structure — but most teams improvise it ad-hoc:
-
 | Problem | agent-spine answer |
 |---------|-------------------|
-| "We run lint, test, build manually every time" | **Declarative YAML** — one file defines plan → lint → test+security → build → review → deploy. `agent-spine run` executes it. |
-| "A test failed; did it pass before my change?" | **Immutable append-only snapshots** — every transition recorded with parent linkage. Replay any execution to compare. |
-| "I need a human to review before deploy" | **ApprovalGate nodes** — workflow pauses at the gate, waits for resume, rejects with error if denied. |
-| "Parallel branches are hard to coordinate" | **Fan-out/fan-in** — multiple outgoing edges execute concurrently; `JoinSet` merges results before proceeding. |
-| "My agent retried forever and burned tokens" | **Exponential backoff + hard limits** — configurable retry policy prevents unbounded loops. |
-| "I can't tell what happened in the last run" | **InMemory · JSONL · SQLite** — state stores record every snapshot for inspection and  replay. |
-| "I need agent-brain context per node" | **Optional BrainRouter** — MCP bridge to agent-brain for task routing, payload enrichment, and trajectory logging. |
+| "We run lint, test, build manually every time" | **Declarative YAML** — one file defines the entire pipeline. `agent-spine run` executes it. |
+| "A test failed; did it pass before my change?" | **Immutable snapshots** — every transition recorded with parent linkage. Replay any execution. |
+| "I need a human to review before deploy" | **ApprovalGate** — workflow pauses, waits for resume, rejects with error if denied. |
+| "Parallel branches are impossible to coordinate" | **Fan-out/fan-in** — multiple edges execute concurrently; JoinSet merges before proceeding. |
+| "My agent retried forever and burned $500 in tokens" | **Exponential backoff + hard limits** — configurable retry policy prevents unbounded loops. |
+| "I can't tell what happened in the last run" | **InMemory · JSONL · SQLite** — state stores record every snapshot for inspection and replay. |
+| "I need the right context per workflow node" | **BrainRouter** — optional MCP bridge to agent-brain for task routing and trajectory logging. |
 
 ---
 
-## How this is different
+## What makes this different
 
-| Approach | What it does | What it misses | agent-spine |
-|----------|-------------|----------------|-------------|
-| **Shell scripts** | Sequential commands | No DAG, no state, no parallelism, no gates | YAML-defined graph with branching, join, and HITL |
-| **GitHub Actions / CI** | Push/tag triggered pipelines | Not for local agent-driven workflows | `agent-spine run` — local-first, agent-triggered |
-| **LangGraph / CrewAI** | Multi-agent runtime in *your app* | Local binary, IDE hooks, no framework lock-in | Single binary — no Python/JS runtime needed |
-| **Makefiles / Justfiles** | Task runner with deps | No state machine, no approval gates, no replay | Append-only snapshots + retries + replay |
-| **Manual agent prompting** | "Please run tests, then build" | No enforcement, no audit trail, no parallelism | Declarative graph + immutable history |
+| Approach | Strengths | What it misses | agent-spine does it |
+|----------|-----------|----------------|---------------------|
+| **Shell scripts** | Simple, universal | No DAG, no state, no parallelism, no gates | YAML-defined graph with branching, joins, and HITL |
+| **GitHub Actions / CI** | Push-triggered, hosted | Not for local agent-driven workflows | `agent-spine run` — local-first, agent-triggered |
+| **LangGraph / CrewAI** | Multi-agent Python runtime | Local binary, no IDE hooks, framework lock-in | Single Rust binary — no Python/JS runtime needed |
+| **Makefiles / Justfiles** | Fast task runner | No state machine, no approval gates, no replay | Append-only snapshots + retries + replay |
+| **Manual prompting** | "Please run tests, then build" | No enforcement, no audit, no parallelism | Declarative graph + immutable history |
 
 ---
 
-## What you get (main features)
+## What you get
 
 | Feature | Why use it |
 |---------|------------|
-| **YAML workflow definitions** | Versioned schema, validation, `NodeKind` (Agent, Checkpoint, Verify, ApprovalGate) |
+| **YAML workflow definitions** | Versioned schema with validation; `NodeKind` types: Agent, Checkpoint, Verify, ApprovalGate |
 | **Immutable snapshots** | Parent-linked, monotonic sequence — every transition is auditable |
-| **Parallel fan-out/fan-in** | `JoinSet`-based concurrent branches merged at join nodes |
-| **ApprovalGate** | Human-in-the-loop pause/resume — reject blocks execution with error |
-| **Exponential backoff retries** | Prevents unbounded agent retries on failure |
-| **ConfidenceRouter** | Escalates after N consecutive failures (threshold-based) |
+| **Parallel fan-out/fan-in** | JoinSet-based concurrent branches merged at join nodes |
+| **ApprovalGate** | Human-in-the-loop pause/resume; reject blocks execution with error |
+| **Exponential backoff retries** | Prevents unbounded agent retries on failure (configurable: initial delay, max attempts) |
+| **ConfidenceRouter** | Escalates after N consecutive failures (threshold-based routing) |
 | **State stores** | InMemory (dev), JSONL (file), SQLite (persistent) |
-| **BrainRouter (optional)** | MCP bridge to agent-brain for context routing, enrichment, trajectory |
-| **LocalAgent** | Auto-resolves Agent/Checkpoint/ApprovalGate nodes — no external hooks needed |
-| **CLI run/validate/init/serve** | Single binary, no Python/Node runtime |
+| **BrainRouter** | Optional MCP bridge to agent-brain for per-node context routing |
+| **LocalAgent** | Auto-resolves Agent/Checkpoint/ApprovalGate nodes — no external hooks |
+| **CLI** | `run/validate/init/serve` — single binary, no runtime dependencies |
 
 ---
 
@@ -67,61 +104,24 @@ Every non-trivial AI coding task needs structure — but most teams improvise it
 
 | Command | Description |
 |---------|-------------|
-| `agent-spine init` | Generate config, prerequisites check, example `dev-pipeline.yaml` (10 nodes) |
-| `agent-spine run <file>` | Execute workflow YAML with built-in LocalAgent |
-| `agent-spine validate <file>` | Validate workflow definition |
-| `agent-spine serve` | Start gRPC + dashboard API server |
-| `agent-spine brain health` | Check agent-brain connectivity |
-| `agent-spine brain route <task>` | Route a task through agent-brain |
-| `agent-spine brain status` | Show brain connection status |
-
----
-
-## How a run works
-
-```mermaid
-flowchart TD
-    Start[agent-spine run workflow.yaml] --> Validate[Validate workflow definition]
-    Validate --> Spawn[Spawn LocalAgent]
-    Spawn --> Executor[Executor walks graph]
-    
-    Executor --> AgentNode{Agent Node}
-    AgentNode -->|pause| LocalAgent[LocalAgent auto-resolves]
-    
-    Executor --> ApprovalNode{ApprovalGate}
-    ApprovalNode -->|pause| HITL[Human / Auto Approve]
-    
-    Executor --> CheckpointNode{Checkpoint / Verify}
-    CheckpointNode --> Snap[Record Snapshot]
-    
-    LocalAgent --> FanOut[Parallel fan-out]
-    HITL --> FanOut
-    Snap --> FanOut
-    
-    FanOut --> Join[JoinSet merges branches]
-    Join --> Store[(State Store<br>SQLite / JSONL)]
-```
+| `agent-spine init` | Generate config, check prerequisites, create example `dev-pipeline.yaml` (10 nodes) |
+| `agent-spine run <file>` | Execute a workflow YAML with built-in LocalAgent |
+| `agent-spine validate <file>` | Validate a workflow definition against the schema |
+| `agent-spine serve` | Start gRPC + dashboard API server on port 3100 |
+| `agent-spine brain health` | Check agent-brain MCP connectivity |
+| `agent-spine brain route <task>` | Route a task through agent-brain for context |
 
 ---
 
 ## Quick Install
 
-### Binary install
-
 ```bash
 curl -fsSL https://raw.githubusercontent.com/autonomic-ai-dev/agent-spine/master/scripts/install.sh | bash
-```
-
-Auto-detects your OS/arch, downloads the correct binary from the latest release, and installs to `/usr/local/bin`. Supports **macOS** (x86_64, aarch64), **Linux** (x86_64, aarch64), and **Windows** (x86_64, via Git BASH/MSYS2).
-
-Override the install directory or pin a specific version:
-
-```bash
-INSTALL_DIR=~/.local/bin AGENT_SPINE_VERSION=0.16.2 curl -fsSL https://raw.githubusercontent.com/autonomic-ai-dev/agent-spine/master/scripts/install.sh | bash
+agent-spine init
+agent-spine run dev-pipeline.yaml
 ```
 
 Or from source:
-
 ```bash
 git clone https://github.com/autonomic-ai-dev/agent-spine.git && cd agent-spine
 cargo build --release
@@ -129,7 +129,9 @@ cargo build --release
 ./target/release/agent-spine run dev-pipeline.yaml
 ```
 
-### Programmatic usage
+---
+
+## Programmatic Usage
 
 ```rust
 use std::sync::{Arc, Mutex};
@@ -143,32 +145,33 @@ let workflow = WorkflowDefinition::new("my_pipeline", 1, "start", nodes, edges)
     .validate()?;
 let store = Arc::new(Mutex::new(InMemoryStateStore::default()));
 let supervisor = Supervisor::new();
-
 let mut executor = Executor::new(validated, store, supervisor);
 let exec_id = executor.run(serde_json::json!({ "input": "data" })).await?;
 ```
 
-### Dashboard
+---
+
+## Design Principles
+
+1. **Immutable history** — state snapshots are append-only; every transition references its parent
+2. **Versioned schemas** — workflow and state schemas are explicitly versioned to prevent drift
+3. **Bounded retries** — agents have hard execution limits; no unbounded loops
+4. **Idempotent effects** — external effects use idempotency keys recorded before acknowledgment
+5. **Human-in-the-loop** — ApprovalGate pauses execution for mandatory human review at configurable transitions
+6. **Adapter pattern** — provider-specific behavior (brain routing, state storage) behind trait boundaries
+7. **Branching replay** — replay creates a new execution branch; it never rewrites history
+
+---
+
+## Dashboard
 
 ```bash
-# Terminal 1 — start server
+# Terminal 1 — start spine server
 agent-spine serve --db state.db --port 3000
 
 # Terminal 2 — start dashboard (requires bun)
 cd dashboard && bun install && bun run dev
 ```
-
----
-
-## Key design
-
-1. State snapshots are **immutable and append-only**; every transition references its parent.
-2. Workflow and state schemas are **explicitly versioned**.
-3. Retries have **hard execution limits** — agents do not loop unbounded.
-4. External effects use **idempotency keys** recorded before acknowledgement.
-5. **Human approval** is required for configured high-impact transitions (ApprovalGate).
-6. Provider-specific behavior remains behind **adapter traits**.
-7. Replay creates a **new execution branch** — it does not rewrite history.
 
 ---
 
@@ -180,14 +183,10 @@ cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace --all-features
 ```
 
-### Prerequisites (source build only)
-
-- **protoc** — gRPC codegen (<https://grpc.io/docs/protoc-installation/>)
-- **bun** — dashboard dev (<https://bun.sh>) — optional
-- **agent-brain** — MCP routing & memory (<https://github.com/autonomic-ai-dev/agent-brain>) — optional
+Prerequisites (source build): `protoc` (gRPC codegen), `bun` (dashboard — optional), `agent-brain` (MCP bridge — optional).
 
 ---
 
 ## License
 
-Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE).
+Apache License 2.0

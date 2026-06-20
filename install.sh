@@ -69,6 +69,13 @@ main() {
         sudo mv "/tmp/${bin_name}" "${INSTALL_DIR}/${bin_name}"
     fi
 
+    # macOS Gatekeeper: clear quarantine + ad-hoc sign
+    if [[ "$(uname -s)" == "Darwin" ]] && command -v codesign >/dev/null 2>&1; then
+        xattr -cr "${INSTALL_DIR}/${bin_name}" 2>/dev/null || true
+        codesign --force --sign - "${INSTALL_DIR}/${bin_name}" 2>/dev/null || true
+        echo "macOS: cleared quarantine and adhoc-signed ${bin_name}"
+    fi
+
     echo "agent-spine v${version} installed to ${INSTALL_DIR}/${bin_name}"
     agent-spine --help
 }
