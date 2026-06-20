@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.2] - 2026-06-20
+
+### Fixed
+
+- NATS connect calls use 3s timeout in event bus, async sandbox, and JetStream bridge to avoid hanging when broker is unavailable
+
 ## [0.16.1] - 2026-06-20
 
 ### Added

@@ -15,9 +15,13 @@ pub async fn run_sandbox_via_jetstream(
     cwd: Option<&Path>,
     timeout: Duration,
 ) -> Result<SandboxResult, String> {
-    let client = async_nats::connect(nats_url)
-        .await
-        .map_err(|e| format!("NATS connect failed: {e}"))?;
+    let client = match tokio::time::timeout(
+        std::time::Duration::from_secs(3),
+        async_nats::connect(nats_url)
+    ).await {
+        Ok(Ok(c)) => c,
+        _ => return Err("NATS connect failed or timed out".to_string()),
+    };
 
     let job_id = Uuid::now_v7().to_string();
     let msg_id = format!("sandbox-{job_id}");
