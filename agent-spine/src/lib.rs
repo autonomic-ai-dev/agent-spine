@@ -5,6 +5,8 @@
 )]
 pub mod agent;
 pub mod api;
+#[cfg(feature = "nats")]
+pub mod async_sandbox;
 pub mod autonomic_api;
 pub mod brain_router;
 pub mod cancellation;
@@ -13,6 +15,8 @@ pub mod event;
 pub mod executor;
 pub mod global_workspace;
 pub mod idempotency;
+#[cfg(feature = "nats")]
+pub mod jetstream;
 #[cfg(feature = "nats")]
 pub mod jetstream_bridge;
 pub mod mcp_bridge;

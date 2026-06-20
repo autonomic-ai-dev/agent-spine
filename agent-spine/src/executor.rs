@@ -521,14 +521,55 @@ impl<S: WorkflowState> Executor<S> {
                                     .map(|c| c.timeout_secs)
                                     .unwrap_or(60);
                                 let workdir = std::env::current_dir().ok();
-                                match crate::sandbox::run_sandbox(
-                                    cmd,
-                                    &image,
-                                    std::time::Duration::from_secs(timeout_secs),
-                                    workdir.as_deref(),
-                                )
-                                .await
-                                {
+                                let duration = std::time::Duration::from_secs(timeout_secs);
+                                let sandbox_result = {
+                                    #[cfg(feature = "nats")]
+                                    {
+                                        if let Some(url) = agent_body_core::default_nats_url() {
+                                            match crate::async_sandbox::run_sandbox_via_jetstream(
+                                                &url,
+                                                cmd,
+                                                workdir.as_deref(),
+                                                duration,
+                                            )
+                                            .await
+                                            {
+                                                Ok(result) => Ok(result),
+                                                Err(e) => {
+                                                    tracing::warn!(
+                                                        "JetStream sandbox failed ({e}); falling back to docker"
+                                                    );
+                                                    crate::sandbox::run_sandbox(
+                                                        cmd,
+                                                        &image,
+                                                        duration,
+                                                        workdir.as_deref(),
+                                                    )
+                                                    .await
+                                                }
+                                            }
+                                        } else {
+                                            crate::sandbox::run_sandbox(
+                                                cmd,
+                                                &image,
+                                                duration,
+                                                workdir.as_deref(),
+                                            )
+                                            .await
+                                        }
+                                    }
+                                    #[cfg(not(feature = "nats"))]
+                                    {
+                                        crate::sandbox::run_sandbox(
+                                            cmd,
+                                            &image,
+                                            duration,
+                                            workdir.as_deref(),
+                                        )
+                                        .await
+                                    }
+                                };
+                                match sandbox_result {
                                     Ok(result) => {
                                         let mut p = task.payload.clone();
                                         if let Some(obj) = p.as_object_mut() {

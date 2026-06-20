@@ -5,6 +5,7 @@ version = 4
 [[package]]
 name = "agent-body-core"
 version = "0.3.0"
+source = "git+https://github.com/autonomic-ai-dev/agent-body#5e557e6f41682b315a98fa4b4c17fb0e3dadf130"
 dependencies = [
  "anyhow",
  "dirs",

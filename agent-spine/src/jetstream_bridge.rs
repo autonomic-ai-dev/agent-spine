@@ -1,7 +1,5 @@
-use agent_body_core::nats::subjects;
 use agent_body_core::StateTransitionEvent;
-use async_nats::jetstream::{self, stream::StorageType};
-use std::time::Duration;
+use agent_body_core::nats::subjects;
 use tracing::{info, warn};
 
 use crate::supervisor::{Supervisor, WorkflowEvent};
@@ -87,19 +85,10 @@ fn to_transition(event: WorkflowEvent) -> StateTransitionEvent {
     }
 }
 
-async fn ensure_stream(client: &async_nats::Client) -> Result<jetstream::Context, String> {
-    let js = jetstream::new(client.clone());
-    js.get_or_create_stream(jetstream::stream::Config {
-        name: agent_body_core::STREAM_NAME.to_string(),
-        subjects: vec![agent_body_core::STREAM_SUBJECT_WILDCARD.to_string()],
-        storage: StorageType::File,
-        duplicate_window: agent_body_core::default_duplicate_window(),
-        max_age: Duration::from_secs(7 * 24 * 3600),
-        ..Default::default()
-    })
-    .await
-    .map_err(|e| e.to_string())?;
-    Ok(js)
+async fn ensure_stream(
+    client: &async_nats::Client,
+) -> Result<async_nats::jetstream::Context, String> {
+    crate::jetstream::ensure_autonomic_stream(client).await
 }
 
 /// Forward supervisor workflow events to JetStream for durable event sourcing.
@@ -128,21 +117,18 @@ pub fn spawn_state_bridge(supervisor: Supervisor, nats_url: String) {
                     let Ok(bytes) = serde_json::to_vec(&transition) else {
                         continue;
                     };
-                    let mut headers = async_nats::HeaderMap::new();
-                    headers.insert("Nats-Msg-Id", msg_id.as_str());
-                    if let Err(e) = js
-                        .publish_with_headers(
-                            subjects::SPINE_STATE.to_string(),
-                            headers,
-                            bytes.into(),
-                        )
-                        .await
+                    if let Err(e) =
+                        crate::jetstream::publish_dedup(&js, subjects::SPINE_STATE, &msg_id, &bytes)
+                            .await
                     {
                         warn!(error = %e, "jetstream publish failed");
                     }
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
-                    warn!(lagged = n, "jetstream bridge lagged behind supervisor events");
+                    warn!(
+                        lagged = n,
+                        "jetstream bridge lagged behind supervisor events"
+                    );
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
             }

@@ -130,6 +130,9 @@ enum EventCommand {
         /// SQLite state db for autonomic workflow API (default: global workspace).
         #[arg(long)]
         db: Option<PathBuf>,
+        /// NATS URL for JetStream-backed event bus (or AUTONOMIC_NATS_URL).
+        #[arg(long)]
+        nats_url: Option<String>,
     },
     /// Publish an event to the bus.
     Pub {
@@ -762,13 +765,14 @@ async fn run_brain(command: BrainCommand) -> Result<(), Box<dyn std::error::Erro
 }
 
 async fn run_event(command: EventCommand) -> Result<(), Box<dyn std::error::Error>> {
-    use agent_spine::event::{AgentRegistry, InMemoryEventBus, start_event_server};
+    use agent_spine::event::{AgentRegistry, connect_event_bus, start_event_server};
     use std::sync::Arc;
 
     match command {
-        EventCommand::Serve { port, db } => {
+        EventCommand::Serve { port, db, nats_url } => {
             let db = agent_spine::global_workspace::resolve_state_db(db).ok();
-            let bus = Arc::new(InMemoryEventBus::new(256));
+            let nats_url = nats_url.or_else(agent_body_core::default_nats_url);
+            let bus = connect_event_bus(nats_url).await?;
             let registry = Arc::new(AgentRegistry::new());
             let handle = start_event_server(bus, registry, port, db);
             handle.await.unwrap();

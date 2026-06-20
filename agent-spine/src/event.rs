@@ -335,6 +335,80 @@ pub fn start_event_server(
 }
 
 #[cfg(feature = "nats")]
+pub struct JetStreamEventBus {
+    js: async_nats::jetstream::Context,
+    client: async_nats::Client,
+}
+
+#[cfg(feature = "nats")]
+impl JetStreamEventBus {
+    pub async fn connect(url: &str) -> Result<Self, EventBusError> {
+        let client = async_nats::connect(url)
+            .await
+            .map_err(|e| EventBusError::Nats(e.to_string()))?;
+        let js = crate::jetstream::ensure_autonomic_stream(&client)
+            .await
+            .map_err(EventBusError::Nats)?;
+        Ok(Self { js, client })
+    }
+}
+
+#[cfg(feature = "nats")]
+#[async_trait::async_trait]
+impl EventBus for JetStreamEventBus {
+    async fn publish(&self, event: Event) -> Result<(), EventBusError> {
+        let bytes = serde_json::to_vec(&event).map_err(|e| EventBusError::Nats(e.to_string()))?;
+        crate::jetstream::publish_dedup(&self.js, &event.subject, &event.id, &bytes)
+            .await
+            .map_err(EventBusError::Nats)
+    }
+
+    async fn subscribe(&self, subject: &str) -> broadcast::Receiver<Event> {
+        let (tx, rx) = broadcast::channel(256);
+        let Ok(mut sub) = self.client.subscribe(subject.to_string()).await else {
+            tracing::error!(subject, "jetstream bus subscribe failed");
+            return rx;
+        };
+
+        tokio::spawn(async move {
+            while let Some(msg) = sub.next().await {
+                if let Ok(event) = serde_json::from_slice::<Event>(&msg.payload) {
+                    let _ = tx.send(event);
+                }
+            }
+        });
+
+        rx
+    }
+}
+
+#[cfg(feature = "nats")]
+pub async fn connect_event_bus(
+    nats_url: Option<String>,
+) -> Result<std::sync::Arc<dyn EventBus>, EventBusError> {
+    let url = nats_url.or_else(agent_body_core::default_nats_url);
+    if let Some(url) = url {
+        match JetStreamEventBus::connect(&url).await {
+            Ok(bus) => {
+                tracing::info!(url, "event bus using JetStream");
+                return Ok(std::sync::Arc::new(bus));
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "JetStream unavailable; falling back to in-memory bus");
+            }
+        }
+    }
+    Ok(std::sync::Arc::new(InMemoryEventBus::new(256)))
+}
+
+#[cfg(not(feature = "nats"))]
+pub async fn connect_event_bus(
+    _nats_url: Option<String>,
+) -> Result<std::sync::Arc<dyn EventBus>, EventBusError> {
+    Ok(std::sync::Arc::new(InMemoryEventBus::new(256)))
+}
+
+#[cfg(feature = "nats")]
 pub struct NatsEventBus {
     client: async_nats::Client,
 }
