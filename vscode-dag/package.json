@@ -1,0 +1,45 @@
+{
+  "name": "autonomic-spine-dag",
+  "displayName": "Autonomic Spine DAG",
+  "description": "Visualize agent-spine execution DAGs from ~/.autonomic/logs/spine/executions/",
+  "version": "0.1.0",
+  "publisher": "autonomic-ai-dev",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": [
+    "onCommand:autonomic.refreshDag",
+    "onView:autonomic.dagExplorer"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "autonomic.refreshDag",
+        "title": "Autonomic: Refresh DAG View"
+      },
+      {
+        "command": "autonomic.openDagFile",
+        "title": "Autonomic: Open DAG File"
+      }
+    ],
+    "views": {
+      "explorer": [
+        {
+          "id": "autonomic.dagExplorer",
+          "name": "Autonomic DAGs"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p .",
+    "watch": "tsc -watch -p ."
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.4.0"
+  }
+}
