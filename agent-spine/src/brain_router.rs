@@ -241,4 +241,69 @@ impl BrainRouter {
     pub fn is_connected(&self) -> bool {
         self.bridge.is_some()
     }
+
+    /// Get context from agent-brain for a specific workflow node.
+    pub fn get_context_for_node(
+        &mut self,
+        node_kind: &str,
+        node_name: &str,
+        description: Option<&str>,
+        workflow_name: &str,
+        task_description: &str,
+    ) -> Option<crate::mcp_bridge::GetContextResponse> {
+        let bridge = self.bridge.as_mut()?;
+        let rt = tokio::runtime::Handle::try_current().ok()?;
+        let resp = rt.block_on(bridge.get_context_for_node(
+            node_kind,
+            node_name,
+            description.unwrap_or(""),
+            workflow_name,
+            task_description,
+            300,
+        )).ok()?;
+        Some(resp)
+    }
+
+    /// Check route_task response for workflow triggers and submit them.
+    /// Returns the execution IDs of any triggered workflows.
+    pub fn auto_submit_triggered_workflows(
+        &mut self,
+        response: &RouteTaskResponse,
+        workflow_manager: &crate::workflow_manager::WorkflowManager,
+    ) -> Vec<String> {
+        let mut execution_ids = Vec::new();
+        for ma in &response.must_apply {
+            if ma.topic == "trigger_workflow" {
+                if let Ok(trigger) = serde_json::from_str::<serde_json::Value>(&ma.text) {
+                    let workflow_name = trigger
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown");
+                    tracing::info!("Brain triggered workflow: {}", workflow_name);
+
+                    let yaml_content = serde_yaml::to_string(&trigger).unwrap_or_default();
+                    if !yaml_content.is_empty() {
+                        match workflow_manager.submit_yaml(&yaml_content, serde_json::json!({})) {
+                            Ok(exec_id) => {
+                                tracing::info!(
+                                    "Triggered workflow '{}' execution: {}",
+                                    workflow_name,
+                                    exec_id
+                                );
+                                execution_ids.push(exec_id);
+                            }
+                            Err(e) => {
+                                tracing::warn!(
+                                    "Failed to submit triggered workflow '{}': {}",
+                                    workflow_name,
+                                    e
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        execution_ids
+    }
 }

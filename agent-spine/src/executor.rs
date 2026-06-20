@@ -210,6 +210,24 @@ impl<S: WorkflowState> Executor<S> {
                 .iter()
                 .find(|n| n.name() == node_name)
                 .and_then(|n| n.description());
+
+            // Phase 2: Get node-specific context from brain
+            let workflow_name = self.workflow.definition().name();
+            if let Some(ctx) = brain.get_context_for_node(
+                node_kind,
+                node_name,
+                description,
+                workflow_name,
+                &format!("Execute node '{}' (kind={}) in workflow '{}'", node_name, node_kind, workflow_name),
+            ) {
+                if let Some(obj) = node_payload.as_object_mut() {
+                    let rules_json = serde_json::to_value(&ctx.items).unwrap_or_default();
+                    obj.insert("_brain_rules".into(), rules_json);
+                    obj.insert("_brain_tokens".into(), serde_json::json!(ctx.tokens_used));
+                }
+            }
+
+            // Also store provenance (existing behavior)
             if let Some(provenance) =
                 brain.get_provenance(node_name, node_kind, description, node_payload)
             {

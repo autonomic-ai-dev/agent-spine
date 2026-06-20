@@ -107,7 +107,7 @@ pub struct RouteTaskResponse {
     pub context_bundle: Option<ContextBundle>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GetContextItem {
     pub item_type: String,
     pub topic: String,
@@ -335,6 +335,28 @@ impl McpBridge {
         }
         let value = self.call_tool("get_context", args).await?;
         // get_context returns the response directly (not nested in content)
+        Ok(serde_json::from_value(value)?)
+    }
+
+    /// Call agent-brain's `get_context_for_node` tool (Phase 2: node prompt hydration).
+    pub async fn get_context_for_node(
+        &mut self,
+        node_kind: &str,
+        node_name: &str,
+        node_description: &str,
+        workflow_name: &str,
+        task_description: &str,
+        max_tokens: usize,
+    ) -> Result<GetContextResponse, BridgeError> {
+        let args = serde_json::json!({
+            "node_kind": node_kind,
+            "node_name": node_name,
+            "node_description": node_description,
+            "workflow_name": workflow_name,
+            "task_description": task_description,
+            "max_tokens": max_tokens,
+        });
+        let value = self.call_tool("get_context_for_node", args).await?;
         Ok(serde_json::from_value(value)?)
     }
 
