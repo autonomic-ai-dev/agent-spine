@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-06-20
+
+### Added
+
+- **agent-body-core dependency** — shared types (ExecutionId, BrainProvenance) migrated from local definitions
+- **Wake-on-call** — spawns agent-brain process automatically when unreachable
+- **Workflow auto-trigger** — `BrainRouter::auto_submit_triggered_workflows` detects and submits triggered workflows from brain route_task responses
+- **get_context_for_node integration** — `BrainRouter::get_context_for_node` calls brain for node-specific rules/skills/agents
+- **Enriched trajectory logging** — `store_trajectory` now captures model_used, latency_ms, payload_snapshot, error_message
+
+### Changed
+
+- `ExecutionId` and `BrainProvenance` now re-exported from `agent-body-core`
+- `BrainRouter::store_trajectory_full` accepts richer metadata params
+- Executor injects `_brain_rules` and `_brain_tokens` into node payloads from brain context
+- Version bumped from `0.9.0` to `0.10.0`
+
 ## [0.9.0] - 2026-06-19
 
 ### Added

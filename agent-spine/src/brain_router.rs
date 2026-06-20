@@ -156,6 +156,10 @@ impl BrainRouter {
                 None,
                 None,
                 notes,
+                None,
+                None,
+                None,
+                None,
             ));
         }
     }
@@ -216,7 +220,7 @@ impl BrainRouter {
             })
     }
 
-    /// Store a trajectory with full metadata (task_kind included).
+    /// Store a trajectory with full metadata.
     pub fn store_trajectory_full(
         &mut self,
         workflow_id: &str,
@@ -224,6 +228,10 @@ impl BrainRouter {
         outcome: &str,
         task_kind: Option<&str>,
         notes: Option<&str>,
+        model_used: Option<&str>,
+        latency_ms: Option<u64>,
+        payload_snapshot: Option<&serde_json::Value>,
+        error_message: Option<&str>,
     ) {
         if let Some(bridge) = self.bridge.as_mut()
             && let rt = tokio::runtime::Handle::try_current()
@@ -236,6 +244,10 @@ impl BrainRouter {
                 None,
                 task_kind,
                 notes,
+                model_used,
+                latency_ms,
+                payload_snapshot,
+                error_message,
             ));
         }
     }

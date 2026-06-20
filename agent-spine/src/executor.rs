@@ -250,9 +250,15 @@ impl<S: WorkflowState> Executor<S> {
         node_id: &str,
         outcome: &str,
         task_kind: Option<&str>,
+        model_used: Option<&str>,
+        payload_snapshot: Option<&Value>,
+        error_message: Option<&str>,
     ) {
         if let Some(brain) = self.brain.as_mut() {
-            brain.store_trajectory_full(exec_id, node_id, outcome, task_kind, None);
+            brain.store_trajectory_full(
+                exec_id, node_id, outcome, task_kind, None,
+                model_used, None, payload_snapshot, error_message,
+            );
         }
     }
 
@@ -281,7 +287,7 @@ impl<S: WorkflowState> Executor<S> {
 
         self.prepare_and_append_snapshot(&self.state_store, current_snapshot.clone())?;
 
-        self.log_trajectory(&exec_id_str, "init", "started", None);
+        self.log_trajectory(&exec_id_str, "init", "started", None, None, None, None);
 
         let nodes = self.workflow.definition().nodes().to_vec();
         let edges = self.workflow.definition().edges().to_vec();
@@ -316,7 +322,7 @@ impl<S: WorkflowState> Executor<S> {
                     .transition(final_transition, cancelled_payload)
                     .map_err(|_| ExecutorError::InvalidTransition)?;
                 self.prepare_and_append_snapshot(&self.state_store, current_snapshot)?;
-                self.log_trajectory(&exec_id_str, "cancelled", "cancelled", None);
+                self.log_trajectory(&exec_id_str, "cancelled", "cancelled", None, None, None, None);
                 break;
             }
 
@@ -535,7 +541,16 @@ impl<S: WorkflowState> Executor<S> {
                     .iter()
                     .find(|n| n.name() == *node_name)
                     .map(|n| n.kind().to_string());
-                self.log_trajectory(&exec_id_str, node_name, outcome, node_kind.as_deref());
+                let model_used = payload.get("_model").and_then(|v| v.as_str());
+                self.log_trajectory(
+                    &exec_id_str,
+                    node_name,
+                    outcome,
+                    node_kind.as_deref(),
+                    model_used,
+                    Some(payload),
+                    None,
+                );
             }
 
             // Merge payloads from all parallel branches
@@ -617,7 +632,7 @@ impl<S: WorkflowState> Executor<S> {
 
                 self.prepare_and_append_snapshot(&self.state_store, current_snapshot)?;
 
-                self.log_trajectory(&exec_id_str, "complete", "success", None);
+                self.log_trajectory(&exec_id_str, "complete", "success", None, None, None, None);
                 break;
             }
 

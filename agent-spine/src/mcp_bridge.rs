@@ -296,6 +296,10 @@ impl McpBridge {
         route_log_id: Option<&str>,
         task_kind: Option<&str>,
         notes: Option<&str>,
+        model_used: Option<&str>,
+        latency_ms: Option<u64>,
+        payload_snapshot: Option<&serde_json::Value>,
+        error_message: Option<&str>,
     ) -> Result<TrajectoryReport, BridgeError> {
         let mut args = serde_json::json!({
             "workflow_id": workflow_id,
@@ -310,6 +314,18 @@ impl McpBridge {
         }
         if let Some(n) = notes {
             args["notes"] = serde_json::Value::String(n.into());
+        }
+        if let Some(model) = model_used {
+            args["model_used"] = serde_json::Value::String(model.into());
+        }
+        if let Some(latency) = latency_ms {
+            args["latency_ms"] = serde_json::json!(latency);
+        }
+        if let Some(payload) = payload_snapshot {
+            args["payload_snapshot"] = payload.clone();
+        }
+        if let Some(err) = error_message {
+            args["error_message"] = serde_json::Value::String(err.into());
         }
 
         let value = self.call_tool("store_trajectory", args).await?;
