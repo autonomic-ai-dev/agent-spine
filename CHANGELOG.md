@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.1] - 2026-06-20
+
+### Fixed
+
+- Pin `agent-body-core` to `v0.3.1` so CI resolves `default_nats_url()` for JetStream integration
+
 ## [0.14.0] - 2026-06-20
 
 ### Added
