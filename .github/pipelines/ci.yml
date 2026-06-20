@@ -1,14 +1,13 @@
 version: 2
 companion_workflows:
   - .github/workflows/ci.yml
-  - .github/workflows/release.yml
 pipelines:
   ci:
     stages:
-      - id: check
-        workflow: .github/workflows/ci.yml
+      - id: test
+        workflow: .github/workflows/stage-test.yml
 
       - id: build
         workflow: .github/workflows/stage-build.yml
         needs:
-          - check
+          - test
