@@ -139,7 +139,7 @@ pub fn estimated_tokens_from_payload(payload: &serde_json::Value) -> u64 {
     payload
         .get("_brain_tokens")
         .and_then(serde_json::Value::as_u64)
-        .unwrap_or(2000)
+        .unwrap_or(100)
 }
 
 #[must_use]
@@ -169,7 +169,7 @@ mod tests {
 
     #[test]
     fn tokens_from_payload() {
-        assert_eq!(estimated_tokens_from_payload(&json!({})), 2000);
+        assert_eq!(estimated_tokens_from_payload(&json!({})), 100);
         assert_eq!(
             estimated_tokens_from_payload(&json!({ "_brain_tokens": 900 })),
             900
