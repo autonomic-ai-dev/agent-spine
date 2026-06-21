@@ -20,6 +20,7 @@ pub mod idempotency;
 pub mod jetstream;
 #[cfg(feature = "nats")]
 pub mod jetstream_bridge;
+pub mod log;
 pub mod mcp_bridge;
 pub mod meta_router;
 pub mod router;
@@ -29,7 +30,6 @@ pub mod supervisor;
 pub mod wake_on_call;
 pub mod workflow;
 pub mod workflow_manager;
-pub mod log;
 pub mod workflows;
 
 mod execution;
