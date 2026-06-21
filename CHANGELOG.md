@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.7] - 2026-06-21
+
+### Fixed
+
+- CI builds use git `agent-body-core` dependency instead of a local path
+- Removed duplicate `executor.rs` module conflicting with `executor/mod.rs`
+- Rustfmt fixes for CI format check
+
 ## [0.16.6] - 2026-06-21
 
 ### Added
