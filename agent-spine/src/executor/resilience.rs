@@ -1,7 +1,7 @@
 //! Node retry backoff, circuit breaking, and dead-letter queue publishing.
 
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 use serde::Serialize;
 use serde_json::Value;

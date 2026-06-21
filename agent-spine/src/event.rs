@@ -347,9 +347,9 @@ impl JetStreamEventBus {
             std::time::Duration::from_secs(3),
             agent_body_core::connect_nats(),
         )
-                .await
-                .map_err(|_| EventBusError::Nats("timeout connecting to NATS".into()))?
-                .map_err(|e| EventBusError::Nats(e.to_string()))?;
+        .await
+        .map_err(|_| EventBusError::Nats("timeout connecting to NATS".into()))?
+        .map_err(|e| EventBusError::Nats(e.to_string()))?;
 
         let js = crate::jetstream::ensure_autonomic_stream(&client)
             .await
@@ -425,9 +425,9 @@ impl NatsEventBus {
             std::time::Duration::from_secs(3),
             agent_body_core::connect_nats(),
         )
-                .await
-                .map_err(|_| EventBusError::Nats("timeout connecting to NATS".into()))?
-                .map_err(|e| EventBusError::Nats(e.to_string()))?;
+        .await
+        .map_err(|_| EventBusError::Nats("timeout connecting to NATS".into()))?
+        .map_err(|e| EventBusError::Nats(e.to_string()))?;
         Ok(Self { client })
     }
 }
