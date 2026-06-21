@@ -1,6 +1,8 @@
 use anyhow::{Context, Result, bail};
-use std::os::unix::fs::PermissionsExt;
 use std::process::Command;
+
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 
 const REPO: &str = "autonomic-ai-dev/agent-spine";
 const BINARY: &str = "agent-spine";
@@ -96,6 +98,7 @@ pub fn run_update(force: bool) -> Result<bool> {
         bail!("download failed — release may not exist for this platform ({target})");
     }
 
+    #[cfg(unix)]
     std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755))
         .context("set executable permissions")?;
 
