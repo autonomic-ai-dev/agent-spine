@@ -10,14 +10,17 @@ use crate::sandbox::SandboxResult;
 
 /// Dispatch sandbox execution to agent-immune via JetStream and await the result.
 pub async fn run_sandbox_via_jetstream(
-    nats_url: &str,
+    _nats_url: &str,
     command: &str,
     cwd: Option<&Path>,
     timeout: Duration,
+    memory_mb: Option<u32>,
+    cpu_cores: Option<f32>,
+    backend: Option<&str>,
 ) -> Result<SandboxResult, String> {
     let client = match tokio::time::timeout(
         std::time::Duration::from_secs(3),
-        async_nats::connect(nats_url),
+        agent_body_core::connect_nats(),
     )
     .await
     {
@@ -38,6 +41,9 @@ pub async fn run_sandbox_via_jetstream(
         job_id: job_id.clone(),
         command: command.to_string(),
         cwd: cwd.map(|p| p.display().to_string()),
+        memory_mb,
+        cpu_cores,
+        backend: backend.map(str::to_string),
     };
 
     let js = crate::jetstream::ensure_autonomic_stream(&client).await?;

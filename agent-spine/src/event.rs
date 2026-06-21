@@ -342,9 +342,11 @@ pub struct JetStreamEventBus {
 
 #[cfg(feature = "nats")]
 impl JetStreamEventBus {
-    pub async fn connect(url: &str) -> Result<Self, EventBusError> {
-        let client =
-            tokio::time::timeout(std::time::Duration::from_secs(3), async_nats::connect(url))
+    pub async fn connect(_url: &str) -> Result<Self, EventBusError> {
+        let client = tokio::time::timeout(
+            std::time::Duration::from_secs(3),
+            agent_body_core::connect_nats(),
+        )
                 .await
                 .map_err(|_| EventBusError::Nats("timeout connecting to NATS".into()))?
                 .map_err(|e| EventBusError::Nats(e.to_string()))?;
@@ -418,9 +420,11 @@ pub struct NatsEventBus {
 
 #[cfg(feature = "nats")]
 impl NatsEventBus {
-    pub async fn connect(url: &str) -> Result<Self, EventBusError> {
-        let client =
-            tokio::time::timeout(std::time::Duration::from_secs(3), async_nats::connect(url))
+    pub async fn connect(_url: &str) -> Result<Self, EventBusError> {
+        let client = tokio::time::timeout(
+            std::time::Duration::from_secs(3),
+            agent_body_core::connect_nats(),
+        )
                 .await
                 .map_err(|_| EventBusError::Nats("timeout connecting to NATS".into()))?
                 .map_err(|e| EventBusError::Nats(e.to_string()))?;

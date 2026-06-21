@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.6] - 2026-06-21
+
+### Added
+
+- **V2 workflow resilience** — `executor/resilience.rs` with exponential backoff, per-node circuit breaker, and `system.dlq` dead-letter publishing on final failure
+- Per-node `timeout_s` / `timeout_secs` in workflow YAML (default 300s; sandbox uses `sandbox_config.timeout_secs`)
+
+### Changed
+
+- Sandbox nodes route through agent-immune via JetStream when NATS is configured (no Docker fallback)
+- Docker fallback hardened with `--network=none`, memory/CPU/pids limits
+- NATS clients use `agent_body_core::connect_nats()` for authenticated connections
+
 ## [0.16.5] - 2026-06-21
 
 ### Added

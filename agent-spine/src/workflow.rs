@@ -7,6 +7,8 @@ use std::{
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+pub const DEFAULT_NODE_TIMEOUT_SECS: u64 = 300;
+
 /// Declarative workflow definition loaded from YAML.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct WorkflowDefinition {
@@ -320,6 +322,9 @@ pub struct WorkflowNode {
     /// Sandbox node configuration (only meaningful for Sandbox kind).
     #[serde(default)]
     sandbox_config: Option<SandboxConfig>,
+    /// Per-node execution timeout in seconds (`timeout_s` alias supported in YAML).
+    #[serde(default, alias = "timeout_s")]
+    timeout_secs: Option<u64>,
 }
 
 impl WorkflowNode {
@@ -365,6 +370,7 @@ impl WorkflowNode {
             debate_config: Some(DebateConfig::default()),
             vote_config: None,
             sandbox_config: None,
+            timeout_secs: None,
         }
     }
 
@@ -380,6 +386,7 @@ impl WorkflowNode {
             debate_config: None,
             vote_config: Some(VoteConfig::default()),
             sandbox_config: None,
+            timeout_secs: None,
         }
     }
 
@@ -395,6 +402,7 @@ impl WorkflowNode {
             debate_config: None,
             vote_config: None,
             sandbox_config: Some(SandboxConfig::default()),
+            timeout_secs: None,
         }
     }
 
@@ -416,6 +424,7 @@ impl WorkflowNode {
             debate_config: None,
             vote_config: None,
             sandbox_config: None,
+            timeout_secs: None,
         }
     }
 
@@ -430,6 +439,22 @@ impl WorkflowNode {
     #[must_use]
     pub fn retry_policy(&self) -> RetryPolicy {
         self.retry_policy.clone().unwrap_or_default()
+    }
+
+    /// Per-node timeout in seconds (sandbox nodes fall back to `sandbox_config.timeout_secs`).
+    #[must_use]
+    pub fn timeout_secs(&self) -> u64 {
+        if let Some(t) = self.timeout_secs {
+            return t;
+        }
+        if self.kind == NodeKind::Sandbox {
+            return self
+                .sandbox_config
+                .as_ref()
+                .map(|c| c.timeout_secs)
+                .unwrap_or(60);
+        }
+        DEFAULT_NODE_TIMEOUT_SECS
     }
 
     /// Return the node name.

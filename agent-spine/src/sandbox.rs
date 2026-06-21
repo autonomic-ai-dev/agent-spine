@@ -16,7 +16,18 @@ pub async fn run_sandbox(
     timeout: Duration,
     workdir: Option<&Path>,
 ) -> Result<SandboxResult, String> {
-    let docker_args = build_docker_args(command, image, workdir);
+    run_sandbox_hardened(command, image, timeout, workdir, 256, 1.0).await
+}
+
+pub async fn run_sandbox_hardened(
+    command: &str,
+    image: &str,
+    timeout: Duration,
+    workdir: Option<&Path>,
+    memory_mb: u32,
+    cpu_cores: f32,
+) -> Result<SandboxResult, String> {
+    let docker_args = build_docker_args(command, image, workdir, memory_mb, cpu_cores);
 
     let child = Command::new("docker")
         .args(&docker_args)
@@ -38,8 +49,25 @@ pub async fn run_sandbox(
     })
 }
 
-fn build_docker_args(command: &str, image: &str, workdir: Option<&Path>) -> Vec<String> {
-    let mut args = vec!["run".to_string(), "--rm".to_string(), "-i".to_string()];
+fn build_docker_args(
+    command: &str,
+    image: &str,
+    workdir: Option<&Path>,
+    memory_mb: u32,
+    cpu_cores: f32,
+) -> Vec<String> {
+    let mut args = vec![
+        "run".to_string(),
+        "--rm".to_string(),
+        "-i".to_string(),
+        "--network=none".to_string(),
+        "--memory".to_string(),
+        format!("{memory_mb}m"),
+        "--cpus".to_string(),
+        format!("{cpu_cores}"),
+        "--pids-limit".to_string(),
+        "64".to_string(),
+    ];
 
     if let Some(dir) = workdir {
         let host_dir = dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf());
@@ -62,4 +90,18 @@ pub fn sandbox_output_to_payload(result: SandboxResult) -> Value {
         "_sandbox_stderr": result.stderr,
         "_sandbox_exit_code": result.exit_code,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn docker_args_include_network_and_resource_limits() {
+        let args = build_docker_args("echo hi", "ubuntu:24.04", None, 256, 1.0);
+        assert!(args.contains(&"--network=none".to_string()));
+        assert!(args.contains(&"--memory".to_string()));
+        assert!(args.contains(&"256m".to_string()));
+        assert!(args.contains(&"--cpus".to_string()));
+    }
 }

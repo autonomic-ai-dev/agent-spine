@@ -4,10 +4,10 @@ version = 4
 
 [[package]]
 name = "agent-body-core"
-version = "0.3.1"
-source = "git+https://github.com/autonomic-ai-dev/agent-body?tag=v0.3.1#f85ae7807c1f515f003e1e3ff1627746024e84a2"
+version = "0.3.3"
 dependencies = [
  "anyhow",
+ "async-nats",
  "dirs 5.0.1",
  "serde",
  "serde_json",
