@@ -266,6 +266,16 @@ async fn run(command: Command) -> Result<(), Box<dyn std::error::Error>> {
                 for w in agent_spine::workflows::ALL {
                     println!("  {:<25} {} — {}", w.name, w.label, w.description);
                 }
+                let registry_entries = agent_spine::registry_workflow::list_registry_aliases();
+                if !registry_entries.is_empty() {
+                    println!();
+                    println!("Autonomic Registry workflows (from agent-brain cache):");
+                    for (alias, desc) in registry_entries {
+                        println!("  @{:<24} {}", alias, desc);
+                    }
+                    println!();
+                    println!("  Run: agent-brain registry sync --local  (if cache is empty)");
+                }
                 return Ok(());
             }
 
@@ -327,12 +337,15 @@ async fn run(command: Command) -> Result<(), Box<dyn std::error::Error>> {
 
             // Determine which workflow to write
             let (workflow_name, workflow_yaml) = if let Some(ref kind) = with {
-                let entry = agent_spine::workflows::find(kind).ok_or_else(|| {
-                    format!("Unknown workflow '{kind}'. Use `agent-spine init --with list` to see available workflows.")
-                })?;
-                (entry.name, entry.yaml)
+                let (name, yaml) = agent_spine::registry_workflow::resolve_workflow_yaml(kind)
+                    .ok_or_else(|| {
+                        format!(
+                            "Unknown workflow '{kind}'. Use `agent-spine init --with list` to see built-in and @registry workflows."
+                        )
+                    })?;
+                (name, yaml)
             } else {
-                ("example", EXAMPLE_WORKFLOW)
+                ("example".to_string(), EXAMPLE_WORKFLOW.to_string())
             };
 
             let workflow_filename = format!("{workflow_name}.yaml");

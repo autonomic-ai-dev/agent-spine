@@ -31,6 +31,7 @@ pub mod update;
 pub mod wake_on_call;
 pub mod workflow;
 pub mod workflow_manager;
+pub mod registry_workflow;
 pub mod workflows;
 
 mod execution;
