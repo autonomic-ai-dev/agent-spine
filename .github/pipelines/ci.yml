@@ -15,6 +15,3 @@ pipelines:
         workflow: .github/workflows/stage-build.yml
         needs:
           - test
-        inputs:
-          version: ${{ context.test.version }}
-          git_sha: ${{ context.test.git_sha }}
