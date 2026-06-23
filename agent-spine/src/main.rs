@@ -47,7 +47,7 @@ enum Command {
         /// Skip prerequisite checks (protoc, bun, agent-brain).
         #[arg(short, long)]
         force: bool,
-        /// Target directory for generated files (default: ~/.config/agent-spine).
+        /// Target directory for workflow files (default: ~/.autonomic/state/spine).
         #[arg(short, long)]
         dir: Option<PathBuf>,
         /// Generate a specific built-in workflow instead of the generic example.

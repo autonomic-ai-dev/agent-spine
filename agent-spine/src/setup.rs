@@ -11,10 +11,8 @@ pub fn run_init(
     dir: Option<PathBuf>,
     with: Option<String>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let config_dir = dir.unwrap_or_else(|| {
-        let home = std::env::var("HOME").expect("HOME must be set");
-        PathBuf::from(home).join(".config/agent-spine")
-    });
+    let _ = agent_body_core::run_legacy_migrations();
+    let config_dir = dir.unwrap_or_else(agent_body_core::spine_config_dir);
 
     let mut progress = ProgressRun::new("agent-spine init").with_total_hint(4);
 
@@ -82,16 +80,23 @@ pub fn run_init(
     dirs.done();
 
     let cfg = progress.step("config file");
-    let config_path = config_dir.join("config.toml");
-    if !config_path.exists() {
-        let mut f = std::fs::File::create(&config_path)
-            .map_err(|e| format!("failed to write config: {e}"))?;
-        write!(f, "{}", CONFIG_TEMPLATE)?;
-        println!("✓ Created config: {}", config_path.display());
+    let unified = agent_body_core::config_path();
+    if !unified.exists() {
+        agent_body_core::ensure_default_ecosystem_sections()
+            .map_err(|e| format!("init unified config: {e}"))?;
+    }
+    if agent_body_core::read_organ_section_raw("spine")
+        .map_err(|e| format!("read [spine]: {e}"))?
+        .is_none()
+    {
+        let spine_table: toml::Table = toml::from_str(CONFIG_TEMPLATE).unwrap_or_default();
+        agent_body_core::write_organ_section_raw("spine", &spine_table)
+            .map_err(|e| format!("write [spine]: {e}"))?;
+        println!("✓ Created [spine] in {}", unified.display());
         cfg.done();
     } else {
         cfg.cached();
-        println!("  Config exists: {}", config_path.display());
+        println!("  [spine] exists in {}", unified.display());
     }
 
     let wf = progress.step("workflow file");
@@ -134,7 +139,7 @@ pub fn run_init(
 }
 
 pub fn run_doctor() -> Result<(), Box<dyn std::error::Error>> {
-    let mut progress = ProgressRun::new("agent-spine health check").with_total_hint(6);
+    let mut progress = ProgressRun::new("agent-spine health check").with_total_hint(7);
     let mut all_ok = true;
 
     let toolchain = progress.step("rust toolchain");
@@ -174,17 +179,36 @@ pub fn run_doctor() -> Result<(), Box<dyn std::error::Error>> {
         brain.warn("not found (optional — MCP routing & memory)");
     }
 
-    let home = std::env::var("HOME").unwrap_or_default();
-    let config_dir = PathBuf::from(&home).join(".config/agent-spine");
+    let config_dir = agent_body_core::spine_config_dir();
+    let legacy = agent_body_core::legacy_spine_config_dir();
     let cfg = progress.step("config directory");
     if config_dir.exists() {
-        println!("✓ config dir: {}", config_dir.display());
+        println!("✓ spine state: {}", config_dir.display());
         cfg.done();
+    } else if legacy.exists() {
+        cfg.warn(format!(
+            "legacy {} — run `agent-spine init` to migrate",
+            legacy.display()
+        ));
     } else {
         cfg.warn(format!(
             "{} not yet created — run `agent-spine init`",
             config_dir.display()
         ));
+    }
+
+    let unified = agent_body_core::config_path();
+    let unified_step = progress.step("unified config");
+    if unified.is_file()
+        && agent_body_core::read_organ_section_raw("spine")
+            .ok()
+            .flatten()
+            .is_some()
+    {
+        println!("✓ [spine] in {}", unified.display());
+        unified_step.done();
+    } else {
+        unified_step.warn(format!("missing [spine] in {}", unified.display()));
     }
 
     let example = config_dir.join("workflows/example.yaml");
