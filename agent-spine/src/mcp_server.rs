@@ -70,7 +70,7 @@ impl SpineMcp {
                     serde_json::to_string_pretty(&result).unwrap_or_else(|_| "{}".to_string());
                 Ok(CallToolResult::success(vec![Content::text(text)]))
             }
-            Err(e) => Err(McpError::internal_error(format!("{e}"), None)),
+            Err(e) => Err(McpError::internal_error(e.to_string(), None)),
         }
     }
 
