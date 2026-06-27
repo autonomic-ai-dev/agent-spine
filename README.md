@@ -52,6 +52,7 @@ flowchart TD
 |------|--------------|--------------|
 | **Standalone** | `agent-spine run dev-pipeline.yaml` | Execute a workflow YAML with embedded LocalAgent |
 | **Standalone** | `agent-spine serve` | Start gRPC event bus + dashboard API on `:3100` |
+| **Standalone** | `agent-spine mcp-serve` | Start MCP stdio server only (for gateway aggregation) |
 | **Standalone** | `agent-spine validate workflow.yaml` | Schema validation without execution |
 | **Integrated** | agent-spine `:3100` | Peripheral organs register as event subscribers |
 | **Integrated** | BrainRouter | MCP bridge to agent-brain for context per node |
@@ -113,6 +114,7 @@ In standalone mode, agent-spine is a local workflow runner. In integrated mode, 
 | `agent-spine run <file>` | Execute a workflow YAML with built-in LocalAgent |
 | `agent-spine validate <file>` | Validate a workflow definition against the schema |
 | `agent-spine serve` | Start gRPC + dashboard API server on port 3100 |
+| `agent-spine mcp-serve` | Start MCP stdio server only (for gateway aggregation) |
 | `agent-spine brain health` | Check agent-brain MCP connectivity |
 | `agent-spine brain route <task>` | Route a task through agent-brain for context |
 
