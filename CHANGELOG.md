@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.1] - 2026-06-27
+
+### Added
+
+- **MCP server** (`agent-spine mcp-serve`) — starts an MCP stdio server for gateway aggregation. Used by `agent-body serve-mcp`.
+- **Organ tool definitions** — `spine_submit_workflow`, `spine_check_status`, `spine_list_workflows` with `#[tool(tool_box)]` naming convention
+- **Integration tests** — default parameter validation, `ServerHandler` trait compliance
+
 ## [0.17.0] - 2026-06-23
 
 ### Added

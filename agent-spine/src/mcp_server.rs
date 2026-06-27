@@ -138,3 +138,19 @@ impl ServerHandler for SpineMcp {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_limit_is_10() {
+        assert_eq!(default_limit(), 10);
+    }
+
+    #[test]
+    fn spine_mcp_implements_server_handler() {
+        fn assert_handler<T: rmcp::ServerHandler>() {}
+        assert_handler::<SpineMcp>();
+    }
+}
