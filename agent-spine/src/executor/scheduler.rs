@@ -138,6 +138,12 @@ impl<T> ReadyQueue<T> {
     }
 }
 
+impl<T> Default for ReadyQueue<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
