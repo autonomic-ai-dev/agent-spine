@@ -17,6 +17,7 @@ jobs:
   build:
     name: Multi-arch build
     uses: ./.github/workflows/reusable-build.yml
+    secrets: inherit
     with:
       retention-days: ${{ inputs.retention-days || 14 }}
 
