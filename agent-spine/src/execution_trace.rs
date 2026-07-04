@@ -97,13 +97,7 @@ async fn publish(event: &ExecutionTraceEvent) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     let js = crate::jetstream::ensure_autonomic_stream(&client).await?;
     let bytes = serde_json::to_vec(event).map_err(|e| e.to_string())?;
-    crate::jetstream::publish_dedup(
-        &js,
-        EXECUTION_COMPLETED_SUBJECT,
-        &event.msg_id,
-        &bytes,
-    )
-    .await
+    crate::jetstream::publish_dedup(&js, EXECUTION_COMPLETED_SUBJECT, &event.msg_id, &bytes).await
 }
 
 #[cfg(test)]
