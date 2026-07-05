@@ -13,6 +13,7 @@ pub mod budget_gate;
 pub mod cancellation;
 pub(crate) mod condition;
 pub mod event;
+pub mod execution_trace;
 pub mod executor;
 pub mod global_workspace;
 pub mod idempotency;

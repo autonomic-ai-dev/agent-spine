@@ -303,6 +303,7 @@ impl<S: WorkflowState> Executor<S> {
         let workflow_name = self.workflow.definition().name().to_owned();
         tracing::info!("Starting execution of workflow '{}'", workflow_name);
 
+        let initial_payload_for_trace = initial_payload.clone();
         let mut current_snapshot = StateSnapshot::initial(execution_id, initial_payload);
 
         self.prepare_and_append_snapshot(&self.state_store, current_snapshot.clone())?;
@@ -827,6 +828,18 @@ impl<S: WorkflowState> Executor<S> {
                 current_snapshot = current_snapshot
                     .transition(transition, final_payload)
                     .map_err(|_| ExecutorError::InvalidTransition)?;
+
+                let final_payload_for_trace = current_snapshot.payload().clone();
+                let success = !is_failure_payload(&final_payload_for_trace);
+                crate::execution_trace::spawn_publish(
+                    crate::execution_trace::ExecutionTraceEvent::from_payloads(
+                        &exec_id_str,
+                        &workflow_name,
+                        &initial_payload_for_trace,
+                        &final_payload_for_trace,
+                        success,
+                    ),
+                );
 
                 self.prepare_and_append_snapshot(&self.state_store, current_snapshot)?;
 
