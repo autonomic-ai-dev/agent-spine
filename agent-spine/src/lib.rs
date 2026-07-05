@@ -36,6 +36,7 @@ pub mod wake_on_call;
 pub mod workflow;
 pub mod workflow_manager;
 pub mod workflows;
+pub mod speculative_hydrate;
 
 mod execution;
 mod snapshot;
