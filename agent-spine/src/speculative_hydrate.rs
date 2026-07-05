@@ -24,7 +24,7 @@ pub async fn run_speculative_hydrate(probes: Vec<HydrateProbe>) -> Vec<String> {
     }
     let mut handles = Vec::with_capacity(probes.len());
     for probe in probes {
-        handles.push(tokio::spawn(async move { probe.await }));
+        handles.push(tokio::spawn(probe));
     }
     let mut out = Vec::new();
     for handle in handles {
