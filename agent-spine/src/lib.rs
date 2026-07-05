@@ -29,6 +29,7 @@ pub mod registry_workflow;
 pub mod router;
 pub mod sandbox;
 pub mod setup;
+pub mod speculative_hydrate;
 pub mod state;
 pub mod supervisor;
 pub mod update;
