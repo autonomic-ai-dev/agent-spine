@@ -29,6 +29,7 @@ pub mod registry_workflow;
 pub mod router;
 pub mod sandbox;
 pub mod setup;
+pub mod speculative_hydrate;
 pub mod state;
 pub mod supervisor;
 pub mod update;
@@ -36,7 +37,6 @@ pub mod wake_on_call;
 pub mod workflow;
 pub mod workflow_manager;
 pub mod workflows;
-pub mod speculative_hydrate;
 
 mod execution;
 mod snapshot;
