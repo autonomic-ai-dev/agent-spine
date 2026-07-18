@@ -9,6 +9,7 @@ pub const DEEP_CODE_REVIEW: &str = include_str!("../../workflows/deep-code-revie
 pub const BRUTAL_REFACTOR: &str = include_str!("../../workflows/brutal-refactor.yaml");
 pub const SYSTEM_ARCHITECT: &str = include_str!("../../workflows/system-architect.yaml");
 pub const ROOT_CAUSE_ANALYSIS: &str = include_str!("../../workflows/root-cause-analysis.yaml");
+pub const FEATURE_FROM_SPEC: &str = include_str!("../../workflows/feature-from-spec.yaml");
 
 /// All built-in workflow entries with their canonical name and YAML content.
 pub const ALL: &[WorkflowEntry] = &[
@@ -47,6 +48,12 @@ pub const ALL: &[WorkflowEntry] = &[
         label: "System Architect",
         description: "System design — gather context, ideate 3 architectures, evaluate, ADR",
         yaml: SYSTEM_ARCHITECT,
+    },
+    WorkflowEntry {
+        name: "feature-from-spec",
+        label: "Feature From Spec",
+        description: "Constitution + feature spec → hydrate, plan, write, test, review",
+        yaml: FEATURE_FROM_SPEC,
     },
     WorkflowEntry {
         name: "root-cause-analysis",
