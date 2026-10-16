@@ -10,12 +10,14 @@ env:
 jobs:
   test:
     name: Test and snapshot build
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install Protobuf Compiler (macOS)
-        run: brew install protobuf
+      - name: Install Protobuf Compiler
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq protobuf-compiler
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -46,14 +48,14 @@ jobs:
         run: |
           mkdir -p dist
           cp target/release/agent-spine \
-            "dist/agent-spine-snapshot-darwin-arm64-${{ steps.meta.outputs.version }}-${{ steps.meta.outputs.git_sha }}"
-          chmod +x "dist/agent-spine-snapshot-darwin-arm64-${{ steps.meta.outputs.version }}-${{ steps.meta.outputs.git_sha }}"
+            "dist/agent-spine-snapshot-linux-x86_64-${{ steps.meta.outputs.version }}-${{ steps.meta.outputs.git_sha }}"
+          chmod +x "dist/agent-spine-snapshot-linux-x86_64-${{ steps.meta.outputs.version }}-${{ steps.meta.outputs.git_sha }}"
 
       - name: Upload snapshot artifact
         uses: actions/upload-artifact@v7
         with:
-          name: agent-spine-snapshot-darwin-arm64
-          path: dist/agent-spine-snapshot-darwin-arm64-${{ steps.meta.outputs.version }}-${{ steps.meta.outputs.git_sha }}
+          name: agent-spine-snapshot-linux-x86_64
+          path: dist/agent-spine-snapshot-linux-x86_64-${{ steps.meta.outputs.version }}-${{ steps.meta.outputs.git_sha }}
           if-no-files-found: error
           retention-days: 14
 
@@ -68,7 +70,7 @@ jobs:
 
   frontend:
     name: Frontend check and build
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: ./dashboard
