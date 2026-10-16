@@ -44,6 +44,9 @@ pub async fn run_sandbox_via_jetstream(
         memory_mb,
         cpu_cores,
         backend: backend.map(str::to_string),
+        wasm_path: None,
+        fuel_limit: None,
+        memory_limit_bytes: None,
     };
 
     let js = crate::jetstream::ensure_autonomic_stream(&client).await?;
