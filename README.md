@@ -1,5 +1,7 @@
 # agent-spine — Deterministic Workflow Engine for AI Agents
 
+Agent context: [docs/CONTEXT.md](docs/CONTEXT.md).
+
 **Cloud-Native role: Workflow engine** (Jobs / Argo Workflows / StatefulSets analog) — YAML DAGs, immutable snapshots, retries, and HITL gates.
 
 `agent-spine` is the orchestration engine for the Autonomic cluster. Instead of relying on probabilistic Python `while` loops to determine an agent's control flow, `agent-spine` forces agents through strict, deterministic Directed Acyclic Graphs (DAGs).
