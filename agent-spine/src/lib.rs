@@ -1,5 +1,7 @@
 #![allow(
     clippy::collapsible_if,
+    clippy::double_must_use,
+    clippy::result_large_err,
     clippy::io_other_error,
     clippy::too_many_arguments
 )]
