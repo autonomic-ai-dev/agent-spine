@@ -122,7 +122,16 @@ In standalone mode, agent-spine is a local workflow runner. In integrated mode, 
 
 ---
 
-## Quick Install
+## Installation
+
+### Homebrew (macOS — Recommended)
+
+```bash
+brew tap autonomic-ai-dev/tap
+brew install agent-spine
+```
+
+### Direct Download / curl
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/autonomic-ai-dev/agent-spine/master/scripts/install.sh | bash
@@ -130,7 +139,8 @@ agent-spine init
 agent-spine run dev-pipeline.yaml
 ```
 
-Or from source:
+### From Source
+
 ```bash
 git clone https://github.com/autonomic-ai-dev/agent-spine.git && cd agent-spine
 cargo build --release
