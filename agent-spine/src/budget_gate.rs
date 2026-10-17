@@ -41,13 +41,17 @@ pub enum BudgetGateError {
 pub enum PreconditionError {
     #[error("workflow budget ceiling exceeded: current ${current:.2} >= max ${max:.2}")]
     WorkflowBudgetExceeded { current: f64, max: f64 },
-    #[error("budget headroom insufficient for node '{node}': remaining ${remaining:.2} < required ${required:.2}")]
+    #[error(
+        "budget headroom insufficient for node '{node}': remaining ${remaining:.2} < required ${required:.2}"
+    )]
     InsufficientHeadroom {
         node: String,
         remaining: f64,
         required: f64,
     },
-    #[error("provider quota exceeded for node '{node}': provider '{provider}' utilization {utilization:.1}% > max {max_allowed:.1}%")]
+    #[error(
+        "provider quota exceeded for node '{node}': provider '{provider}' utilization {utilization:.1}% > max {max_allowed:.1}%"
+    )]
     QuotaExceeded {
         node: String,
         provider: String,

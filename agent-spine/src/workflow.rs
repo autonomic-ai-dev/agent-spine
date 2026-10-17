@@ -814,11 +814,17 @@ edges: []
         assert_eq!(node.preconditions()[0].check, "budget_headroom");
         assert_eq!(node.preconditions()[0].min_remaining_usd, Some(5.00));
         assert_eq!(node.preconditions()[1].check, "quota_available");
-        assert_eq!(node.preconditions()[1].provider.as_deref(), Some("anthropic"));
+        assert_eq!(
+            node.preconditions()[1].provider.as_deref(),
+            Some("anthropic")
+        );
         assert_eq!(node.preconditions()[1].max_utilization_pct, Some(85.0));
 
         let validated = wf.validate().expect("should validate cleanly");
-        assert_eq!(validated.definition().name, "autonomous-feature-development");
+        assert_eq!(
+            validated.definition().name,
+            "autonomous-feature-development"
+        );
     }
 
     #[test]
@@ -834,7 +840,10 @@ nodes:
     kind: agent
 edges: []
 "#;
-        let err = WorkflowDefinition::from_yaml(yaml_neg).unwrap().validate().unwrap_err();
+        let err = WorkflowDefinition::from_yaml(yaml_neg)
+            .unwrap()
+            .validate()
+            .unwrap_err();
         assert!(matches!(err, WorkflowValidationError::InvalidBudget { .. }));
 
         let yaml_bad_quota = r#"
@@ -849,7 +858,13 @@ nodes:
         max_utilization_pct: 150.0
 edges: []
 "#;
-        let err = WorkflowDefinition::from_yaml(yaml_bad_quota).unwrap().validate().unwrap_err();
-        assert!(matches!(err, WorkflowValidationError::InvalidPrecondition { .. }));
+        let err = WorkflowDefinition::from_yaml(yaml_bad_quota)
+            .unwrap()
+            .validate()
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            WorkflowValidationError::InvalidPrecondition { .. }
+        ));
     }
 }
