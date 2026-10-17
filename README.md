@@ -1,6 +1,6 @@
 # agent-spine — Deterministic Workflow Engine for AI Agents
 
-Agent context: [docs/CONTEXT.md](docs/CONTEXT.md).
+Agent context: [docs/CONTEXT.md](docs/CONTEXT.md) · Architecture: [https://autonomic-ai.dev/docs/architecture](https://autonomic-ai.dev/docs/architecture).
 
 **Cloud-Native role: Workflow engine** (Jobs / Argo Workflows / StatefulSets analog) — YAML DAGs, immutable snapshots, retries, and HITL gates.
 
@@ -191,6 +191,12 @@ agent-spine serve --db state.db --port 3000
 # Terminal 2 — start dashboard (requires bun)
 cd dashboard && bun install && bun run dev
 ```
+
+---
+
+## Architecture
+
+For the complete 11-organ architecture specification, data flows, and MCP tool contracts, see the centralized [Autonomic AI Architecture Hub](https://autonomic-ai.dev/docs/architecture).
 
 ---
 
