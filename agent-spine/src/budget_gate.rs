@@ -37,6 +37,27 @@ pub enum BudgetGateError {
     Frozen { reason: String },
 }
 
+#[derive(Debug, Error, PartialEq)]
+pub enum PreconditionError {
+    #[error("workflow budget ceiling exceeded: current ${current:.2} >= max ${max:.2}")]
+    WorkflowBudgetExceeded { current: f64, max: f64 },
+    #[error("budget headroom insufficient for node '{node}': remaining ${remaining:.2} < required ${required:.2}")]
+    InsufficientHeadroom {
+        node: String,
+        remaining: f64,
+        required: f64,
+    },
+    #[error("provider quota exceeded for node '{node}': provider '{provider}' utilization {utilization:.1}% > max {max_allowed:.1}%")]
+    QuotaExceeded {
+        node: String,
+        provider: String,
+        utilization: f64,
+        max_allowed: f64,
+    },
+    #[error("unknown precondition check '{check}' on node '{node}'")]
+    UnknownCheck { node: String, check: String },
+}
+
 impl BudgetGate {
     #[must_use]
     pub fn from_env() -> Self {
@@ -46,7 +67,7 @@ impl BudgetGate {
         let heart_url =
             std::env::var("AUTONOMIC_HEART_URL").unwrap_or_else(|_| "http://127.0.0.1:3101".into());
         let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(5))
+            .timeout(std::time::Duration::from_millis(500))
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
         Self {
@@ -142,6 +163,114 @@ impl BudgetGate {
 
         Ok(())
     }
+
+    pub async fn query_budget_headroom(&self) -> f64 {
+        let heart_dir = agent_body_core::organ_state_dir("heart");
+        let heart_db = heart_dir.join("heart.db");
+        if heart_db.exists() {
+            if let Ok(conn) = rusqlite::Connection::open(&heart_db) {
+                let monthly_limit: Option<f64> = conn
+                    .query_row(
+                        "SELECT monthly_budget_usd FROM budget_policies WHERE id = 'default'",
+                        [],
+                        |r| r.get(0),
+                    )
+                    .ok();
+                if let Some(limit) = monthly_limit {
+                    let now = chrono::Utc::now();
+                    let month_prefix = now.format("%Y-%m").to_string();
+                    let current_spend: f64 = conn
+                        .query_row(
+                            "SELECT IFNULL(SUM(total_cost_usd), 0.0) FROM daily_usage_rollups WHERE date LIKE ?1",
+                            [&format!("{month_prefix}%")],
+                            |r| r.get(0),
+                        )
+                        .unwrap_or(0.0);
+                    return (limit - current_spend).max(0.0);
+                }
+            }
+        }
+        // Default headroom if not configured or heart is offline
+        100.0
+    }
+
+    pub async fn query_quota_utilization(&self, provider: &str) -> f64 {
+        let heart_dir = agent_body_core::organ_state_dir("heart");
+        let heart_db = heart_dir.join("heart.db");
+        if heart_db.exists() {
+            if let Ok(conn) = rusqlite::Connection::open(&heart_db) {
+                let util: Option<f64> = conn
+                    .query_row(
+                        "SELECT utilization_pct FROM provider_quota_snapshots WHERE provider = ?1 ORDER BY updated_at DESC LIMIT 1",
+                        [provider],
+                        |r| r.get(0),
+                    )
+                    .ok();
+                if let Some(u) = util {
+                    return u;
+                }
+            }
+        }
+        0.0
+    }
+
+    pub async fn evaluate_step_preconditions(
+        &self,
+        node_name: &str,
+        preconditions: &[crate::workflow::StepPrecondition],
+        current_workflow_cost: f64,
+        max_workflow_cost: Option<f64>,
+    ) -> Result<(), PreconditionError> {
+        if let Some(max_cost) = max_workflow_cost {
+            if current_workflow_cost >= max_cost {
+                return Err(PreconditionError::WorkflowBudgetExceeded {
+                    current: current_workflow_cost,
+                    max: max_cost,
+                });
+            }
+        }
+
+        if !self.enabled || preconditions.is_empty() {
+            return Ok(());
+        }
+
+        for pre in preconditions {
+            match pre.check.as_str() {
+                "budget_headroom" => {
+                    let required = pre.min_remaining_usd.unwrap_or(0.0);
+                    let remaining = self.query_budget_headroom().await;
+                    if remaining < required {
+                        return Err(PreconditionError::InsufficientHeadroom {
+                            node: node_name.to_owned(),
+                            remaining,
+                            required,
+                        });
+                    }
+                }
+                "quota_available" => {
+                    let provider = pre.provider.as_deref().unwrap_or("unknown");
+                    let max_allowed = pre.max_utilization_pct.unwrap_or(100.0);
+                    let utilization = self.query_quota_utilization(provider).await;
+                    if utilization > max_allowed {
+                        return Err(PreconditionError::QuotaExceeded {
+                            node: node_name.to_owned(),
+                            provider: provider.to_owned(),
+                            utilization,
+                            max_allowed,
+                        });
+                    }
+                }
+                other => {
+                    return Err(PreconditionError::UnknownCheck {
+                        node: node_name.to_owned(),
+                        check: other.to_owned(),
+                    });
+                }
+            }
+        }
+
+        Ok(())
+    }
 }
 
 #[must_use]
@@ -199,5 +328,47 @@ mod tests {
     fn requires_check_for_agent_not_fork() {
         assert!(requires_budget_check(&NodeKind::Agent));
         assert!(!requires_budget_check(&NodeKind::Fork));
+    }
+
+    #[tokio::test]
+    async fn evaluate_preconditions_workflow_ceiling_exceeded() {
+        let gate = BudgetGate::disabled();
+        let err = gate
+            .evaluate_step_preconditions("plan", &[], 15.50, Some(15.00))
+            .await
+            .unwrap_err();
+        assert_eq!(
+            err,
+            PreconditionError::WorkflowBudgetExceeded {
+                current: 15.50,
+                max: 15.00
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn evaluate_preconditions_headroom_and_quota_allowed() {
+        let gate = BudgetGate::from_env();
+        let preconditions = vec![
+            crate::workflow::StepPrecondition {
+                check: "budget_headroom".into(),
+                min_remaining_usd: Some(5.00),
+                provider: None,
+                window: None,
+                max_utilization_pct: None,
+            },
+            crate::workflow::StepPrecondition {
+                check: "quota_available".into(),
+                min_remaining_usd: None,
+                provider: Some("anthropic".into()),
+                window: Some("5h_rolling".into()),
+                max_utilization_pct: Some(85.0),
+            },
+        ];
+
+        let res = gate
+            .evaluate_step_preconditions("plan", &preconditions, 2.50, Some(20.00))
+            .await;
+        assert!(res.is_ok());
     }
 }
