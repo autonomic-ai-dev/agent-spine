@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Resolved `clippy::items-after-test-module` lint and formatting in `budget_gate.rs`.
+- Resolved Dependabot security advisories by upgrading `rustls` (0.23.40 -> 0.23.46), `rustls-webpki` (0.103.13 -> 0.103.15), and `quinn-proto` (0.11.14 -> 0.11.19).
 
 ### Changed
 - Bumped version to `v1.0.0-beta.3.2`.
