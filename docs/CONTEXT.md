@@ -7,7 +7,8 @@ Deterministic workflow DAG engine for Autonomic. Part of [agent-body](https://gi
 | Role | Workflow engine (Argo / Temporal analog) |
 | Binary | `agent-spine` |
 | HTTP | `:3001` API · `:3100` event bus / dashboard relay |
-| Version | 0.20.0+ |
+| Version | v1.0.0-beta.2 |
+| Docs Hub | [https://autonomic-ai.dev/docs/workflows](https://autonomic-ai.dev/docs/workflows) · [Architecture](https://autonomic-ai.dev/docs/architecture) |
 
 ## When to use
 
@@ -35,4 +36,4 @@ Path filter on `agent-spine/**` + Cargo/Makefile/scripts/`.github`. Docs-only PR
 
 ## Related
 
-Brain (routing/verify) · muscle (execute) · mouth (approvals) · heart (budget before LLM nodes)
+Operator usage: [https://autonomic-ai.dev/docs/workflows](https://autonomic-ai.dev/docs/workflows) · Architecture: [https://autonomic-ai.dev/docs/architecture](https://autonomic-ai.dev/docs/architecture) · Brain (routing/verify) · muscle (execute) · mouth (approvals) · heart (budget before LLM nodes)
