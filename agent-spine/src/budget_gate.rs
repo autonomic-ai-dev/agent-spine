@@ -308,6 +308,37 @@ pub fn requires_budget_check(kind: &NodeKind) -> bool {
     )
 }
 
+pub fn can_continue_with_mouth_approval(
+    precondition_err: &PreconditionError,
+    approval_granted: bool,
+) -> bool {
+    if !approval_granted {
+        return false;
+    }
+    matches!(
+        precondition_err,
+        PreconditionError::WorkflowBudgetExceeded { .. }
+            | PreconditionError::InsufficientHeadroom { .. }
+            | PreconditionError::QuotaExceeded { .. }
+    )
+}
+
+pub fn substitute_fallback_model(
+    current_model: &str,
+    utilization_pct: f64,
+    soft_quota_ceiling_pct: f64,
+) -> String {
+    if utilization_pct < soft_quota_ceiling_pct {
+        return current_model.to_string();
+    }
+    match current_model {
+        "claude-3-7-sonnet" | "claude-3-5-sonnet" => "claude-3-5-haiku".to_string(),
+        "gpt-4o" => "gpt-4o-mini".to_string(),
+        "gemini-1.5-pro" | "gemini-2.0-pro" => "gemini-2.0-flash".to_string(),
+        other => other.to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -404,10 +435,7 @@ mod tests {
             substitute_fallback_model("claude-3-7-sonnet", 75.0, 85.0),
             "claude-3-7-sonnet"
         );
-        assert_eq!(
-            substitute_fallback_model("gpt-4o", 60.0, 80.0),
-            "gpt-4o"
-        );
+        assert_eq!(substitute_fallback_model("gpt-4o", 60.0, 80.0), "gpt-4o");
 
         // At or above soft quota ceiling (88% >= 85%) -> substitute lighter fallback
         assert_eq!(
@@ -422,36 +450,5 @@ mod tests {
             substitute_fallback_model("gemini-1.5-pro", 90.0, 85.0),
             "gemini-2.0-flash"
         );
-    }
-}
-
-pub fn can_continue_with_mouth_approval(
-    precondition_err: &PreconditionError,
-    approval_granted: bool,
-) -> bool {
-    if !approval_granted {
-        return false;
-    }
-    matches!(
-        precondition_err,
-        PreconditionError::WorkflowBudgetExceeded { .. }
-            | PreconditionError::InsufficientHeadroom { .. }
-            | PreconditionError::QuotaExceeded { .. }
-    )
-}
-
-pub fn substitute_fallback_model(
-    current_model: &str,
-    utilization_pct: f64,
-    soft_quota_ceiling_pct: f64,
-) -> String {
-    if utilization_pct < soft_quota_ceiling_pct {
-        return current_model.to_string();
-    }
-    match current_model {
-        "claude-3-7-sonnet" | "claude-3-5-sonnet" => "claude-3-5-haiku".to_string(),
-        "gpt-4o" => "gpt-4o-mini".to_string(),
-        "gemini-1.5-pro" | "gemini-2.0-pro" => "gemini-2.0-flash".to_string(),
-        other => other.to_string(),
     }
 }
