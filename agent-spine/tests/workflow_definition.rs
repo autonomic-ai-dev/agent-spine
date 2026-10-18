@@ -152,3 +152,45 @@ fn fork_join_workflow_is_accepted() {
         .validate()
         .expect("fork/join workflow must validate");
 }
+
+#[test]
+fn engineering_safety_builtin_workflow_validates() {
+    let def = WorkflowDefinition::from_yaml(agent_spine::workflows::ENGINEERING_SAFETY)
+        .expect("engineering-safety YAML must parse");
+    let validated = def
+        .validate()
+        .expect("engineering-safety workflow must validate");
+    assert_eq!(validated.definition().name(), "Engineering Safety");
+    assert_eq!(validated.definition().start_node(), "Understand");
+
+    let nodes = validated.definition().nodes();
+    assert!(nodes.iter().any(|n| n.name() == "Understand"));
+    assert!(nodes.iter().any(|n| n.name() == "PredictFailure"));
+    assert!(nodes.iter().any(|n| n.name() == "Implement"));
+    assert!(nodes.iter().any(|n| n.name() == "AttemptToBreak"));
+    assert!(
+        nodes
+            .iter()
+            .any(|n| n.name() == "QualityGate" && matches!(n.kind(), NodeKind::Verify))
+    );
+    assert!(
+        nodes
+            .iter()
+            .any(|n| n.name() == "ReviewGate" && matches!(n.kind(), NodeKind::ApprovalGate))
+    );
+    assert!(nodes.iter().any(|n| n.name() == "VerifiedRelease"));
+
+    // Verify rejection loopback exists on failure
+    let edges = validated.definition().edges();
+    let loopback = edges
+        .iter()
+        .find(|e| e.from() == "QualityGate" && e.to() == "Implement");
+    assert!(
+        loopback.is_some(),
+        "QualityGate must loop back to Implement on failure"
+    );
+    assert_eq!(
+        loopback.unwrap().condition(),
+        Some("state.verified == false")
+    );
+}

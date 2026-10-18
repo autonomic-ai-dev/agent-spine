@@ -10,9 +10,16 @@ pub const BRUTAL_REFACTOR: &str = include_str!("../../workflows/brutal-refactor.
 pub const SYSTEM_ARCHITECT: &str = include_str!("../../workflows/system-architect.yaml");
 pub const ROOT_CAUSE_ANALYSIS: &str = include_str!("../../workflows/root-cause-analysis.yaml");
 pub const FEATURE_FROM_SPEC: &str = include_str!("../../workflows/feature-from-spec.yaml");
+pub const ENGINEERING_SAFETY: &str = include_str!("../../workflows/engineering-safety.yaml");
 
 /// All built-in workflow entries with their canonical name and YAML content.
 pub const ALL: &[WorkflowEntry] = &[
+    WorkflowEntry {
+        name: "engineering-safety",
+        label: "Engineering Safety",
+        description: "Mandatory 5-gate workflow — understand, predict failure, implement, break it, machine verify, approval gate",
+        yaml: ENGINEERING_SAFETY,
+    },
     WorkflowEntry {
         name: "universal-developer",
         label: "Universal Developer",
