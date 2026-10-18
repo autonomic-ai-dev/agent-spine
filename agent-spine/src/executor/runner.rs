@@ -689,7 +689,67 @@ impl<S: WorkflowState> Executor<S> {
                                 }
                             }
                             NodeKind::Fork | NodeKind::Join => task.payload,
-                            NodeKind::Verify => task.payload,
+                            NodeKind::Verify => {
+                                let mut payload = task.payload;
+                                let verified = if let Some(state) = payload.get("state") {
+                                    let lint_passed = state
+                                        .get("lint_passed")
+                                        .and_then(Value::as_bool)
+                                        .unwrap_or(true);
+                                    let tests_passed = state
+                                        .get("tests_passed")
+                                        .and_then(Value::as_bool)
+                                        .unwrap_or(true);
+                                    let exit_code = state
+                                        .get("exit_code")
+                                        .and_then(Value::as_i64)
+                                        .unwrap_or(0);
+                                    let has_failures = state
+                                        .get("has_failures")
+                                        .and_then(Value::as_bool)
+                                        .unwrap_or(false);
+                                    let explicit_verified =
+                                        state.get("verified").and_then(Value::as_bool);
+
+                                    if let Some(ev) = explicit_verified {
+                                        ev && lint_passed
+                                            && tests_passed
+                                            && exit_code == 0
+                                            && !has_failures
+                                    } else {
+                                        lint_passed
+                                            && tests_passed
+                                            && exit_code == 0
+                                            && !has_failures
+                                    }
+                                } else {
+                                    true
+                                };
+
+                                if let Some(state_obj) =
+                                    payload.get_mut("state").and_then(Value::as_object_mut)
+                                {
+                                    state_obj.insert("verified".into(), Value::Bool(verified));
+                                    state_obj.insert(
+                                        "verified_at".into(),
+                                        Value::String(chrono::Utc::now().to_rfc3339()),
+                                    );
+                                } else if let Some(obj) = payload.as_object_mut() {
+                                    let mut state_map = serde_json::Map::new();
+                                    state_map.insert("verified".into(), Value::Bool(verified));
+                                    state_map.insert(
+                                        "verified_at".into(),
+                                        Value::String(chrono::Utc::now().to_rfc3339()),
+                                    );
+                                    obj.insert("state".into(), Value::Object(state_map));
+                                }
+                                tracing::info!(
+                                    node = %task.name,
+                                    verified,
+                                    "QualityGate evaluated machine verification status"
+                                );
+                                payload
+                            }
                             NodeKind::ApprovalGate => {
                                 let result = supervisor
                                     .delegate(
