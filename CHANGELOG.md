@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0-beta.3.3] - 2026-10-18
+
+### Added
+- **Machine-Enforced Engineering Safety 5-Gate Workflow**:
+  - Implemented declarative 5-gate safety workflow (`engineering-safety.yaml`) enforcing the sequence: Gate 1 Understand, Gate 2 Predict Failure, Gate 3 Minimal Diff, Gate 4 Attempt to Break It, and Gate 5 Verify with observable evidence.
+  - Added verification node evaluator support and regression tests in `workflow_definition.rs`.
+
+### Fixed
+- **Tracing Stdio Leakage**: Routed tracing subscriber logs explicitly to `stderr` in `main.rs` to maintain clean MCP/JSON-RPC stdio pipes.
+
+### Changed
+- Bumped version to `v1.0.0-beta.3.3`.
+
 ## [1.0.0-beta.3.2] - 2026-10-18
 
 ### Added
