@@ -258,12 +258,13 @@ async fn main() {
         let telemetry = tracing_opentelemetry::layer().with_tracer(tracer);
         Registry::default()
             .with(EnvFilter::from_default_env())
-            .with(tracing_subscriber::fmt::layer())
+            .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
             .with(telemetry)
             .try_init()
             .ok();
     } else {
         tracing_subscriber::fmt()
+            .with_writer(std::io::stderr)
             .with_env_filter(EnvFilter::from_default_env())
             .try_init()
             .ok();
