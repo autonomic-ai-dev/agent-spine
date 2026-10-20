@@ -643,7 +643,9 @@ impl<S: WorkflowState> Executor<S> {
                                 let sandbox_result = {
                                     #[cfg(feature = "nats")]
                                     {
-                                        if agent_body_core::default_nats_url().is_some() {
+                                        let jetstream_result = if agent_body_core::default_nats_url()
+                                            .is_some()
+                                        {
                                             crate::async_sandbox::run_sandbox_via_jetstream(
                                                 "",
                                                 cmd,
@@ -655,15 +657,25 @@ impl<S: WorkflowState> Executor<S> {
                                             )
                                             .await
                                         } else {
-                                            crate::sandbox::run_sandbox_hardened(
-                                                cmd,
-                                                &image,
-                                                duration,
-                                                workdir.as_deref(),
-                                                DEFAULT_MEM_MB,
-                                                DEFAULT_CPU,
-                                            )
-                                            .await
+                                            Err("NATS not configured".to_string())
+                                        };
+                                        match jetstream_result {
+                                            Ok(result) => Ok(result),
+                                            Err(err) => {
+                                                tracing::warn!(
+                                                    error = %err,
+                                                    "JetStream sandbox unavailable; running in Docker"
+                                                );
+                                                crate::sandbox::run_sandbox_hardened(
+                                                    cmd,
+                                                    &image,
+                                                    duration,
+                                                    workdir.as_deref(),
+                                                    DEFAULT_MEM_MB,
+                                                    DEFAULT_CPU,
+                                                )
+                                                .await
+                                            }
                                         }
                                     }
                                     #[cfg(not(feature = "nats"))]
