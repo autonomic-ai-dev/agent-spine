@@ -635,6 +635,9 @@ pub enum NodeKind {
     /// Spins up an ephemeral sandbox (Docker container) where the agent
     /// writes and executes scratchpad scripts to verify behavior.
     Sandbox,
+    /// Runs the shell command in payload `_muscle_command` through agent-muscle,
+    /// so the AST guard and the command timeout apply.
+    MuscleExec,
     /// Gathers static context from the environment (git diff, test output,
     /// lint results, file contents) and injects raw data into the payload
     /// before the agent executes.
@@ -654,6 +657,7 @@ impl std::fmt::Display for NodeKind {
             Self::Debate => write!(f, "debate"),
             Self::Vote => write!(f, "vote"),
             Self::Sandbox => write!(f, "sandbox"),
+            Self::MuscleExec => write!(f, "muscle_exec"),
             Self::Hydrate => write!(f, "hydrate"),
         }
     }

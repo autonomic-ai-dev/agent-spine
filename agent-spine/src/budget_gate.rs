@@ -304,6 +304,7 @@ pub fn requires_budget_check(kind: &NodeKind) -> bool {
             | NodeKind::Debate
             | NodeKind::Vote
             | NodeKind::Sandbox
+            | NodeKind::MuscleExec
             | NodeKind::ApprovalGate
     )
 }

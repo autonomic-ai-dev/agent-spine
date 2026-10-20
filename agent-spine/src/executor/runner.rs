@@ -600,6 +600,30 @@ impl<S: WorkflowState> Executor<S> {
                                     }
                                 }
                             }
+                            NodeKind::MuscleExec => {
+                                let command = task
+                                    .payload
+                                    .get("_muscle_command")
+                                    .and_then(Value::as_str)
+                                    .ok_or_else(|| ExecutorError::CommandFailed {
+                                        reason: "payload has no _muscle_command".into(),
+                                    })?;
+                                let cwd = std::env::current_dir().ok();
+                                let output = crate::muscle_exec::run(command, cwd.as_deref())
+                                    .await
+                                    .map_err(|reason| ExecutorError::CommandFailed { reason })?;
+                                if output.exit_code != 0 {
+                                    return Err(ExecutorError::CommandFailed {
+                                        reason: format!("exit code {}", output.exit_code),
+                                    });
+                                }
+                                let mut p = task.payload.clone();
+                                if let Some(obj) = p.as_object_mut() {
+                                    obj.insert("_muscle_stdout".into(), Value::String(output.stdout));
+                                    obj.insert("_muscle_exit_code".into(), Value::from(output.exit_code));
+                                }
+                                p
+                            }
                             NodeKind::Sandbox => {
                                 let cmd = task
                                     .payload
@@ -959,4 +983,6 @@ pub enum ExecutorError {
     PayloadTooLarge { size: usize, max: usize },
     #[error("token budget frozen: {reason}")]
     BudgetFrozen { reason: String },
+    #[error("command node failed: {reason}")]
+    CommandFailed { reason: String },
 }

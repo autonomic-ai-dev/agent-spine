@@ -7,7 +7,7 @@ use crate::workflow::{NodeKind, WorkflowEdge};
 pub fn node_weight_us(kind: &NodeKind) -> u64 {
     match kind {
         NodeKind::Agent | NodeKind::Debate | NodeKind::Vote => 800_000,
-        NodeKind::Sandbox => 200_000,
+        NodeKind::Sandbox | NodeKind::MuscleExec => 200_000,
         NodeKind::Verify | NodeKind::Hydrate => 5_000,
         NodeKind::Router | NodeKind::Checkpoint => 100,
         NodeKind::ApprovalGate => 50_000,
