@@ -29,6 +29,7 @@ pub mod mcp_server;
 pub mod meta_router;
 pub mod registry_workflow;
 pub mod router;
+pub mod muscle_exec;
 pub mod sandbox;
 pub mod setup;
 pub mod speculative_hydrate;
