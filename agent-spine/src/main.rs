@@ -389,6 +389,7 @@ async fn run(command: Command) -> Result<(), Box<dyn std::error::Error>> {
             let _dag_path =
                 agent_spine::global_workspace::export_dag_summary(&history, execution_id)?;
             println!("Workflow completed. Execution ID: {}", execution_id);
+            println!("State db: {}", db.display());
             println!("Execution graph: {}", graph_path.display());
             Ok(())
         }
