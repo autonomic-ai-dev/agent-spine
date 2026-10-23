@@ -31,7 +31,7 @@ Summary: agent-spine controls how a workflow run stops, repeats, and recovers. I
 
 ## Verification Suites (Targeted Test Commands)
 
-- **Unit Tests:** `sh .verify/checks/require_tests.sh --test execution_control_tests` (9 tests: idempotency with in-memory and SQLite stores, cancellation, supervisor delegate and resume). `wake_on_call.rs` has no test.
+- **Unit Tests:** `sh .verify/checks/require_tests.sh --test execution_control_tests` (9 tests: idempotency with in-memory and SQLite stores, cancellation, supervisor delegate and resume). `sh .verify/checks/require_tests.sh --test wake_on_call_tests` (1 test: the zero-attempt path of `wait_for_brain`).
 - **Functional API Tests (Hurl):** not written.
 - **Allowlisted Verification:** entries in `.verify/verify.toml`
 - **Preconditions:** Rust toolchain. Whether the `jetstream_bridge.rs` tests need a live NATS broker was not checked in this pass.
@@ -47,6 +47,6 @@ Summary: agent-spine controls how a workflow run stops, repeats, and recovers. I
 ## Gotchas
 
 - Resolved: idempotency, cancellation, and supervisor now have tests in `tests/execution_control_tests.rs`. The idempotency error path (`IdempotencyError`) is not exercised yet.
-- Gap: `wake_on_call.rs` has no test. `wait_for_brain` depends on whether a brain answers on this machine, so a test needs a fixed port and a stub server.
+- Gap: `try_spawn_brain` (the `BRAIN_PATH` override path) is untested. Setting `BRAIN_PATH` needs `unsafe` env mutation, which this crate forbids (`unsafe-code` lint). A test needs the override to be injected as an argument, not read from the environment. `wait_for_brain` with attempts > 0 depends on whether a brain process runs on the machine, so it is not tested either.
 - Not verified: whether the executor checks `CancelToken` between nodes, or only at process exit.
 - `wait_for_brain` returns `false` after its attempts run out. Callers must handle that result, or a missing brain looks like a successful wake-up.
