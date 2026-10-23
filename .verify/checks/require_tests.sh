@@ -1,7 +1,8 @@
 #!/bin/sh
 set -eu
 
-log="$(dirname "$0")/../artifacts/require-tests.log"
+run_id="$(date -u +%Y%m%dT%H%M%SZ)-$$"
+log="$(dirname "$0")/../artifacts/require-tests/$run_id.log"
 mkdir -p "$(dirname "$log")"
 
 status=0
@@ -12,6 +13,7 @@ if [ "$status" -ne 0 ]; then
 fi
 
 passed=$(awk '/^test result:/ {n += $4} END {print n + 0}' "$log")
+echo "passed=$passed" >>"$log"
 if [ "$passed" -eq 0 ]; then
   echo "require_tests: no tests matched the filter: cargo test $*" >&2
   exit 1

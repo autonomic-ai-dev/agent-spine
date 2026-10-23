@@ -4,6 +4,7 @@ commands = [
   "cargo clippy -p agent-spine -- -D warnings",
   "cargo check -p agent-spine",
   "sh .verify/checks/require_tests.sh --test engine_tests",
+  "sh .verify/checks/require_tests.sh --test execution_control_tests",
   ".verify/playbooks/verify_budget_preconditions.sh",
   ".verify/playbooks/verify_workflow_engine.sh",
   ".verify/playbooks/verify_full_suite.sh",

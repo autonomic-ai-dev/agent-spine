@@ -31,7 +31,7 @@ Summary: agent-spine controls how a workflow run stops, repeats, and recovers. I
 
 ## Verification Suites (Targeted Test Commands)
 
-- **Unit Tests:** `cargo test` (whole crate). Inline tests exist in `speculative_hydrate.rs` (1), `jetstream_bridge.rs` (2), `sandbox.rs` (1), and `async_sandbox.rs` (1). No inline tests exist in `cancellation.rs`, `idempotency.rs`, `supervisor.rs`, or `wake_on_call.rs`.
+- **Unit Tests:** `sh .verify/checks/require_tests.sh --test execution_control_tests` (9 tests: idempotency with in-memory and SQLite stores, cancellation, supervisor delegate and resume). `wake_on_call.rs` has no test.
 - **Functional API Tests (Hurl):** not written.
 - **Allowlisted Verification:** entries in `.verify/verify.toml`
 - **Preconditions:** Rust toolchain. Whether the `jetstream_bridge.rs` tests need a live NATS broker was not checked in this pass.
@@ -39,14 +39,14 @@ Summary: agent-spine controls how a workflow run stops, repeats, and recovers. I
 ### Verification Steps
 
 1. **idempotency-unit-tests** (sub-feature: idempotency-check)
-   - Request: `sh .verify/checks/require_tests.sh idempotency`
-   - Why: Proves a repeated key returns the stored record. No test currently matches this filter.
-   - Expected: At least one matching test runs and passes. `cargo test` exits 0 when a filter matches nothing, so exit 0 alone with "0 passed" is not evidence. Check the count in the output.
+   - Request: `sh .verify/checks/require_tests.sh --test execution_control_tests`
+   - Why: Proves a repeated key returns the stored record, that SQLite keys survive a reopen, that cancellation latches and notifies, and that a duplicate delegate is rejected.
+   - Expected: 9 passed, 0 failed. The guard fails if a filter matches zero tests.
    - Impact: A failure means a retried node could run twice. Add the test before relying on retries.
 
 ## Gotchas
 
-- Gap: `idempotency.rs` is the most consequential module here, since it decides whether a retried node runs again, and it has no test. Add tests for both the in-memory and SQLite stores, including the error path.
-- Gap: `cancellation.rs`, `supervisor.rs`, and `wake_on_call.rs` have no tests.
+- Resolved: idempotency, cancellation, and supervisor now have tests in `tests/execution_control_tests.rs`. The idempotency error path (`IdempotencyError`) is not exercised yet.
+- Gap: `wake_on_call.rs` has no test. `wait_for_brain` depends on whether a brain answers on this machine, so a test needs a fixed port and a stub server.
 - Not verified: whether the executor checks `CancelToken` between nodes, or only at process exit.
 - `wait_for_brain` returns `false` after its attempts run out. Callers must handle that result, or a missing brain looks like a successful wake-up.
