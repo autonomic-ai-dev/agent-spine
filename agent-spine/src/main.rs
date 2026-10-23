@@ -476,6 +476,12 @@ async fn run(command: Command) -> Result<(), Box<dyn std::error::Error>> {
             info!("Starting agent-spine gRPC server on port {}", port);
 
             let wf_manager = agent_spine::WorkflowManager::new(db.clone(), false);
+            let closed = wf_manager
+                .recover_interrupted()
+                .map_err(anyhow::Error::msg)?;
+            if closed > 0 {
+                info!("Closed {closed} executions interrupted by a previous shutdown");
+            }
 
             let nats_url = nats_url.or_else(|| std::env::var("AUTONOMIC_NATS_URL").ok());
 

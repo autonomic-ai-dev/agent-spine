@@ -22,6 +22,16 @@ impl SpineMcp {
 
     pub async fn serve(db_path: PathBuf) -> anyhow::Result<()> {
         let server = Self::new(db_path);
+        let closed = server
+            .wf_manager
+            .recover_interrupted()
+            .map_err(anyhow::Error::msg)?;
+        if closed > 0 {
+            tracing::info!(
+                closed,
+                "closed executions interrupted by a previous shutdown"
+            );
+        }
         let service = serve_server(server, rmcp::transport::io::stdio()).await?;
         service.waiting().await?;
         Ok(())
