@@ -8,6 +8,24 @@ use agent_spine::state::InMemoryStateStore;
 use agent_spine::supervisor::Supervisor;
 use agent_spine::workflow::{NodeKind, WorkflowDefinition, WorkflowEdge, WorkflowNode};
 
+async fn wait_for_pending(supervisor: &Supervisor, expected: &[&str]) {
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+    let mut want: Vec<&str> = expected.to_vec();
+    want.sort();
+    loop {
+        let mut pending = supervisor.pending_tasks();
+        pending.sort();
+        if pending == want {
+            return;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "pending tasks {pending:?} never reached {want:?}"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+}
+
 #[tokio::test]
 async fn test_executor_linear_run() {
     let nodes = vec![
@@ -29,19 +47,13 @@ async fn test_executor_linear_run() {
         exec.run(json!({ "init": true })).await
     });
 
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-
-    let pending = supervisor.pending_tasks();
-    assert_eq!(pending, vec!["start_agent"]);
+    wait_for_pending(&supervisor, &["start_agent"]).await;
 
     supervisor
         .resume("start_agent", json!({ "step": 1 }))
         .unwrap();
 
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-
-    let pending = supervisor.pending_tasks();
-    assert_eq!(pending, vec!["end_agent"]);
+    wait_for_pending(&supervisor, &["end_agent"]).await;
 
     supervisor
         .resume("end_agent", json!({ "step": 2 }))
@@ -99,16 +111,12 @@ async fn test_executor_parallel_fan_out() {
         exec.run(json!({ "init": true })).await
     });
 
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    assert_eq!(supervisor.pending_tasks(), vec!["start"]);
+    wait_for_pending(&supervisor, &["start"]).await;
     supervisor
         .resume("start", json!({ "start_done": true }))
         .unwrap();
 
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    let mut pending = supervisor.pending_tasks();
-    pending.sort();
-    assert_eq!(pending, vec!["branch_b", "branch_c"]);
+    wait_for_pending(&supervisor, &["branch_b", "branch_c"]).await;
 
     supervisor
         .resume("branch_b", json!({ "b_done": true }))
@@ -117,8 +125,7 @@ async fn test_executor_parallel_fan_out() {
         .resume("branch_c", json!({ "c_done": true }))
         .unwrap();
 
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    assert_eq!(supervisor.pending_tasks(), vec!["end"]);
+    wait_for_pending(&supervisor, &["end"]).await;
     supervisor.resume("end", json!({ "final": true })).unwrap();
 
     let execution_id = exec_task.await.unwrap().unwrap();
@@ -162,20 +169,18 @@ async fn test_approval_gate_accepts() {
         exec.run(json!({ "init": true })).await
     });
 
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    wait_for_pending(&supervisor, &["start"]).await;
     supervisor
         .resume("start", json!({ "start_done": true }))
         .unwrap();
 
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    assert_eq!(supervisor.pending_tasks(), vec!["gate"]);
+    wait_for_pending(&supervisor, &["gate"]).await;
 
     supervisor
         .resume("gate", json!({ "approved": true, "start_done": true }))
         .unwrap();
 
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    assert_eq!(supervisor.pending_tasks(), vec!["end"]);
+    wait_for_pending(&supervisor, &["end"]).await;
     supervisor.resume("end", json!({ "final": true })).unwrap();
 
     let _ = exec_task.await.unwrap().unwrap();
@@ -206,13 +211,12 @@ async fn test_approval_gate_rejects() {
         exec.run(json!({ "init": true })).await
     });
 
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    wait_for_pending(&supervisor, &["start"]).await;
     supervisor
         .resume("start", json!({ "start_done": true }))
         .unwrap();
 
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    assert_eq!(supervisor.pending_tasks(), vec!["gate"]);
+    wait_for_pending(&supervisor, &["gate"]).await;
 
     supervisor
         .resume("gate", json!({ "rejected": true }))
@@ -241,8 +245,7 @@ async fn test_supervisor_timeout_and_retry() {
         exec.run(json!({ "init": true })).await
     });
 
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    assert_eq!(supervisor.pending_tasks(), vec!["start"]);
+    wait_for_pending(&supervisor, &["start"]).await;
 
     exec_task.abort();
 }
@@ -277,11 +280,7 @@ async fn test_fork_join_barrier() {
         exec.run(json!({ "init": true })).await
     });
 
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    // Fork (pass-through) → branch_a and branch_b run in parallel
-    let mut pending = supervisor.pending_tasks();
-    pending.sort();
-    assert_eq!(pending, vec!["branch_a", "branch_b"]);
+    wait_for_pending(&supervisor, &["branch_a", "branch_b"]).await;
 
     supervisor
         .resume("branch_a", json!({ "a_done": true }))
@@ -290,9 +289,7 @@ async fn test_fork_join_barrier() {
         .resume("branch_b", json!({ "b_done": true }))
         .unwrap();
 
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    // Both branches complete → Join fires → end runs
-    assert_eq!(supervisor.pending_tasks(), vec!["end"]);
+    wait_for_pending(&supervisor, &["end"]).await;
     supervisor.resume("end", json!({ "final": true })).unwrap();
 
     let _ = exec_task.await.unwrap().unwrap();
@@ -327,23 +324,17 @@ async fn test_conditional_edge_skips_branch() {
             .await
     });
 
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    // Router executes and delegates to frontend branch
-    assert_eq!(supervisor.pending_tasks(), vec!["router"]);
-
+    wait_for_pending(&supervisor, &["router"]).await;
     supervisor
         .resume("router", json!({ "state": { "task_type": "frontend" } }))
         .unwrap();
 
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    // Only frontend branch runs (backend edge is conditional and was skipped)
-    assert_eq!(supervisor.pending_tasks(), vec!["frontend"]);
+    wait_for_pending(&supervisor, &["frontend"]).await;
     supervisor
         .resume("frontend", json!({ "fe_done": true }))
         .unwrap();
 
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    assert_eq!(supervisor.pending_tasks(), vec!["end"]);
+    wait_for_pending(&supervisor, &["end"]).await;
     supervisor.resume("end", json!({ "final": true })).unwrap();
 
     let _ = exec_task.await.unwrap().unwrap();
@@ -381,11 +372,7 @@ async fn test_fork_join_with_multi_level_branches() {
         exec.run(json!({ "init": true })).await
     });
 
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    // Fork passed through → both branches start
-    let mut pending = supervisor.pending_tasks();
-    pending.sort();
-    assert_eq!(pending, vec!["long_branch_a", "long_branch_b"]);
+    wait_for_pending(&supervisor, &["long_branch_a", "long_branch_b"]).await;
 
     supervisor
         .resume("long_branch_a", json!({ "a_done": true }))
@@ -394,17 +381,13 @@ async fn test_fork_join_with_multi_level_branches() {
         .resume("long_branch_b", json!({ "b_done": true }))
         .unwrap();
 
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    // Branch B reached Join (1 of 2), Branch A advances to branch C
-    assert_eq!(supervisor.pending_tasks(), vec!["long_branch_c"]);
+    wait_for_pending(&supervisor, &["long_branch_c"]).await;
 
     supervisor
         .resume("long_branch_c", json!({ "c_done": true }))
         .unwrap();
 
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    // All branches complete → Join barrier satisfied → end runs
-    assert_eq!(supervisor.pending_tasks(), vec!["end"]);
+    wait_for_pending(&supervisor, &["end"]).await;
     supervisor.resume("end", json!({ "final": true })).unwrap();
 
     let _ = exec_task.await.unwrap().unwrap();
