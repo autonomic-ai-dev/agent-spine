@@ -5,11 +5,15 @@ use std::sync::{Arc, Mutex};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use std::path::Path;
+
+use crate::mcp_bridge::McpBridge;
 use crate::workflow::NodeKind;
 
 #[derive(Debug, Clone)]
 pub struct BudgetGate {
     heart_url: String,
+    heart_bin: String,
     enabled: bool,
     client: reqwest::Client,
     /// Track freeze offenses per phase — first offense is warning-only.
@@ -58,6 +62,14 @@ pub enum PreconditionError {
         utilization: f64,
         max_allowed: f64,
     },
+    #[error("budget unavailable for node '{node}': heart did not report headroom ({reason})")]
+    BudgetUnavailable { node: String, reason: String },
+    #[error("quota unavailable for node '{node}' provider '{provider}': {reason}")]
+    QuotaUnavailable {
+        node: String,
+        provider: String,
+        reason: String,
+    },
     #[error("unknown precondition check '{check}' on node '{node}'")]
     UnknownCheck { node: String, check: String },
 }
@@ -76,6 +88,7 @@ impl BudgetGate {
             .unwrap_or_else(|_| reqwest::Client::new());
         Self {
             heart_url: heart_url.trim_end_matches('/').to_string(),
+            heart_bin: std::env::var("AGENT_HEART_BIN").unwrap_or_else(|_| "agent-heart".into()),
             enabled,
             client,
             freeze_offenses: Arc::new(Mutex::new(std::collections::HashMap::new())),
@@ -86,6 +99,7 @@ impl BudgetGate {
     pub fn disabled() -> Self {
         Self {
             heart_url: String::new(),
+            heart_bin: String::new(),
             enabled: false,
             client: reqwest::Client::new(),
             freeze_offenses: Arc::new(Mutex::new(std::collections::HashMap::new())),
@@ -168,54 +182,29 @@ impl BudgetGate {
         Ok(())
     }
 
-    pub async fn query_budget_headroom(&self) -> f64 {
-        let heart_dir = agent_body_core::organ_state_dir("heart");
-        let heart_db = heart_dir.join("heart.db");
-        if heart_db.exists() {
-            if let Ok(conn) = rusqlite::Connection::open(&heart_db) {
-                let monthly_limit: Option<f64> = conn
-                    .query_row(
-                        "SELECT monthly_budget_usd FROM budget_policies WHERE id = 'default'",
-                        [],
-                        |r| r.get(0),
-                    )
-                    .ok();
-                if let Some(limit) = monthly_limit {
-                    let now = chrono::Utc::now();
-                    let month_prefix = now.format("%Y-%m").to_string();
-                    let current_spend: f64 = conn
-                        .query_row(
-                            "SELECT IFNULL(SUM(total_cost_usd), 0.0) FROM daily_usage_rollups WHERE date LIKE ?1",
-                            [&format!("{month_prefix}%")],
-                            |r| r.get(0),
-                        )
-                        .unwrap_or(0.0);
-                    return (limit - current_spend).max(0.0);
-                }
-            }
-        }
-        // Default headroom if not configured or heart is offline
-        100.0
+    pub async fn query_budget_headroom(&self) -> Result<f64, String> {
+        let mut heart = McpBridge::connect_to(Path::new(&self.heart_bin), "serve-mcp")
+            .await
+            .map_err(|e| e.to_string())?;
+        let summary = heart
+            .call_tool(
+                "heart_usage_summary",
+                serde_json::json!({ "lookback_days": 30 }),
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+        headroom_from(&summary)
     }
 
-    pub async fn query_quota_utilization(&self, provider: &str) -> f64 {
-        let heart_dir = agent_body_core::organ_state_dir("heart");
-        let heart_db = heart_dir.join("heart.db");
-        if heart_db.exists() {
-            if let Ok(conn) = rusqlite::Connection::open(&heart_db) {
-                let util: Option<f64> = conn
-                    .query_row(
-                        "SELECT utilization_pct FROM provider_quota_snapshots WHERE provider = ?1 ORDER BY updated_at DESC LIMIT 1",
-                        [provider],
-                        |r| r.get(0),
-                    )
-                    .ok();
-                if let Some(u) = util {
-                    return u;
-                }
-            }
-        }
-        0.0
+    pub async fn query_quota_utilization(&self, provider: &str) -> Result<f64, String> {
+        let mut heart = McpBridge::connect_to(Path::new(&self.heart_bin), "serve-mcp")
+            .await
+            .map_err(|e| e.to_string())?;
+        let snapshots = heart
+            .call_tool("heart_quota_status", serde_json::json!({}))
+            .await
+            .map_err(|e| e.to_string())?;
+        quota_utilization_from(&snapshots, provider)
     }
 
     pub async fn evaluate_step_preconditions(
@@ -242,7 +231,15 @@ impl BudgetGate {
             match pre.check.as_str() {
                 "budget_headroom" => {
                     let required = pre.min_remaining_usd.unwrap_or(0.0);
-                    let remaining = self.query_budget_headroom().await;
+                    let remaining = match self.query_budget_headroom().await {
+                        Ok(remaining) => remaining,
+                        Err(reason) => {
+                            return Err(PreconditionError::BudgetUnavailable {
+                                node: node_name.to_owned(),
+                                reason,
+                            });
+                        }
+                    };
                     if remaining < required {
                         return Err(PreconditionError::InsufficientHeadroom {
                             node: node_name.to_owned(),
@@ -254,7 +251,16 @@ impl BudgetGate {
                 "quota_available" => {
                     let provider = pre.provider.as_deref().unwrap_or("unknown");
                     let max_allowed = pre.max_utilization_pct.unwrap_or(100.0);
-                    let utilization = self.query_quota_utilization(provider).await;
+                    let utilization = match self.query_quota_utilization(provider).await {
+                        Ok(utilization) => utilization,
+                        Err(reason) => {
+                            return Err(PreconditionError::QuotaUnavailable {
+                                node: node_name.to_owned(),
+                                provider: provider.to_owned(),
+                                reason,
+                            });
+                        }
+                    };
                     if utilization > max_allowed {
                         return Err(PreconditionError::QuotaExceeded {
                             node: node_name.to_owned(),
@@ -278,6 +284,23 @@ impl BudgetGate {
 }
 
 #[must_use]
+fn headroom_from(summary: &serde_json::Value) -> Result<f64, String> {
+    summary["remaining_budget_usd"]
+        .as_f64()
+        .ok_or_else(|| "heart reported no remaining_budget_usd".to_string())
+}
+
+fn quota_utilization_from(snapshots: &serde_json::Value, provider: &str) -> Result<f64, String> {
+    snapshots
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|snapshot| snapshot["provider"].as_str() == Some(provider))
+        .max_by_key(|snapshot| snapshot["updated_at"].as_i64().unwrap_or(i64::MIN))
+        .and_then(|snapshot| snapshot["utilization_pct"].as_f64())
+        .ok_or_else(|| format!("heart has no quota snapshot for provider '{provider}'"))
+}
+
 pub fn phase_for_kind(kind: &str) -> &'static str {
     match kind {
         "approval_gate" => "approval",
@@ -383,29 +406,81 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn evaluate_preconditions_headroom_and_quota_allowed() {
-        let gate = BudgetGate::from_env();
-        let preconditions = vec![
-            crate::workflow::StepPrecondition {
-                check: "budget_headroom".into(),
-                min_remaining_usd: Some(5.00),
-                provider: None,
-                window: None,
-                max_utilization_pct: None,
-            },
-            crate::workflow::StepPrecondition {
-                check: "quota_available".into(),
-                min_remaining_usd: None,
-                provider: Some("anthropic".into()),
-                window: Some("5h_rolling".into()),
-                max_utilization_pct: Some(85.0),
-            },
-        ];
-
-        let res = gate
-            .evaluate_step_preconditions("plan", &preconditions, 2.50, Some(20.00))
+    async fn headroom_check_fails_closed_when_heart_cannot_be_reached() {
+        let gate = BudgetGate {
+            heart_url: String::new(),
+            heart_bin: "/nonexistent/agent-heart".into(),
+            enabled: true,
+            client: reqwest::Client::new(),
+            freeze_offenses: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        };
+        let preconditions = vec![crate::workflow::StepPrecondition {
+            check: "budget_headroom".into(),
+            min_remaining_usd: Some(5.00),
+            provider: None,
+            window: None,
+            max_utilization_pct: None,
+        }];
+        let result = gate
+            .evaluate_step_preconditions("plan", &preconditions, 0.0, None)
             .await;
-        assert!(res.is_ok());
+        assert!(matches!(
+            result,
+            Err(PreconditionError::BudgetUnavailable { .. })
+        ));
+    }
+
+    #[test]
+    fn quota_is_read_from_the_latest_snapshot_for_the_provider() {
+        let snapshots = json!([
+            {"provider": "anthropic", "utilization_pct": 40.0, "updated_at": 100},
+            {"provider": "anthropic", "utilization_pct": 72.5, "updated_at": 200},
+            {"provider": "openai", "utilization_pct": 99.0, "updated_at": 300}
+        ]);
+        assert_eq!(
+            quota_utilization_from(&snapshots, "anthropic").unwrap(),
+            72.5
+        );
+    }
+
+    #[test]
+    fn quota_for_an_untracked_provider_fails_closed() {
+        let snapshots = json!([{"provider": "openai", "utilization_pct": 10.0, "updated_at": 1}]);
+        assert!(quota_utilization_from(&snapshots, "anthropic").is_err());
+    }
+
+    #[test]
+    fn headroom_is_read_from_the_usage_summary() {
+        assert_eq!(
+            headroom_from(&json!({"remaining_budget_usd": 12.5})).unwrap(),
+            12.5
+        );
+        assert!(headroom_from(&json!({})).is_err());
+    }
+
+    #[tokio::test]
+    async fn quota_check_fails_closed_when_heart_cannot_be_reached() {
+        let gate = BudgetGate {
+            heart_url: String::new(),
+            heart_bin: "/nonexistent/agent-heart".into(),
+            enabled: true,
+            client: reqwest::Client::new(),
+            freeze_offenses: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        };
+        let preconditions = vec![crate::workflow::StepPrecondition {
+            check: "quota_available".into(),
+            min_remaining_usd: None,
+            provider: Some("anthropic".into()),
+            window: Some("5h_rolling".into()),
+            max_utilization_pct: Some(85.0),
+        }];
+        let result = gate
+            .evaluate_step_preconditions("plan", &preconditions, 0.0, None)
+            .await;
+        assert!(matches!(
+            result,
+            Err(PreconditionError::QuotaUnavailable { .. })
+        ));
     }
 
     #[test]

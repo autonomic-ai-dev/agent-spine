@@ -7,6 +7,8 @@ use tokio::sync::Semaphore;
 use tracing;
 
 use crate::ExecutionId;
+use crate::Transition;
+use crate::WorkflowState;
 use crate::executor::Executor;
 use crate::state::SqliteStateStore;
 use crate::supervisor::Supervisor;
@@ -24,6 +26,17 @@ pub struct RunningWorkflow {
 
 /// Manages lifecycle of in-process workflow executions for the gRPC server.
 ///
+const MAX_QUEUED_EXECUTIONS: usize = 256;
+
+fn ensure_queue_capacity(active: usize, limit: usize) -> Result<(), String> {
+    if active >= limit {
+        return Err(format!(
+            "execution queue is full ({active} active); retry once a workflow finishes"
+        ));
+    }
+    Ok(())
+}
+
 /// The `WorkflowManager` owns the `Supervisor` and spawns executor tasks.
 /// External callers (gRPC handlers, dashboard) query status and subscribe
 /// to events through the supervisor. Each execution uses its own SQLite
@@ -121,6 +134,14 @@ impl WorkflowManager {
         initial_payload: Value,
     ) -> Result<String, String> {
         let name = workflow.definition().name().to_owned();
+        {
+            let execs = self.executions.lock().unwrap();
+            let active = execs
+                .values()
+                .filter(|e| matches!(e.status.as_str(), "queued" | "running"))
+                .count();
+            ensure_queue_capacity(active, MAX_QUEUED_EXECUTIONS)?;
+        }
         let execution_id = ExecutionId::new();
         let exec_id_str = execution_id.to_string();
         let cloned_id = exec_id_str.clone();
@@ -205,9 +226,81 @@ impl WorkflowManager {
         guard.values().cloned().collect()
     }
 
+    pub fn recover_interrupted(&self) -> Result<usize, String> {
+        let mut store = SqliteStateStore::new(&self.db_path).map_err(|e| e.to_string())?;
+        let ids = store.list_executions().map_err(|e| e.to_string())?;
+        let mut closed = 0;
+        for id in ids {
+            let history = store.history(id);
+            let Some(last) = history.last() else {
+                continue;
+            };
+            let Some(edge) = last.transition_edge() else {
+                continue;
+            };
+            if matches!(edge.to(), "END" | "CANCELLED" | "INTERRUPTED") {
+                continue;
+            }
+            let closing = last
+                .transition(
+                    Transition::new(edge.to(), "INTERRUPTED"),
+                    last.payload().clone(),
+                )
+                .map_err(|e| e.to_string())?;
+            store.append(closing).map_err(|e| e.to_string())?;
+            closed += 1;
+        }
+        Ok(closed)
+    }
+
     /// Get the status of a specific execution.
     pub fn execution_status(&self, execution_id: &str) -> Option<RunningWorkflow> {
         let guard = self.executions.lock().unwrap();
         guard.get(execution_id).cloned()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::SqliteStateStore;
+    use crate::{StateSnapshot, Transition, WorkflowState};
+    use serde_json::json;
+
+    #[test]
+    fn queue_admission_refuses_work_once_the_bound_is_reached() {
+        assert!(ensure_queue_capacity(1, 2).is_ok());
+        assert!(ensure_queue_capacity(2, 2).is_err());
+    }
+
+    #[test]
+    fn recovery_closes_interrupted_executions_exactly_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("state.db");
+        let mut store = SqliteStateStore::new(&db).unwrap();
+
+        let interrupted = ExecutionId::new();
+        let root = StateSnapshot::initial(interrupted, json!({}));
+        let step = root
+            .transition(Transition::new("start", "build"), json!({}))
+            .unwrap();
+        store.append(root).unwrap();
+        store.append(step).unwrap();
+
+        let finished = ExecutionId::new();
+        let root = StateSnapshot::initial(finished, json!({}));
+        let end = root
+            .transition(Transition::new("build", "END"), json!({}))
+            .unwrap();
+        store.append(root).unwrap();
+        store.append(end).unwrap();
+
+        let manager = WorkflowManager::new(db.clone(), false);
+        assert_eq!(manager.recover_interrupted().unwrap(), 1);
+
+        let history = store.history(interrupted);
+        let last = history.last().unwrap().transition_edge().unwrap();
+        assert_eq!(last.to(), "INTERRUPTED");
+        assert_eq!(manager.recover_interrupted().unwrap(), 0);
     }
 }

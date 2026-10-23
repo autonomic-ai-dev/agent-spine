@@ -190,9 +190,13 @@ impl McpBridge {
     /// Returns `BridgeError::BinaryNotFound` if the binary cannot be located.
     pub async fn connect(brain_path: Option<&Path>) -> Result<Self, BridgeError> {
         let path = resolve_brain_path(brain_path)?;
+        Self::connect_to(&path, "serve").await
+    }
 
+    pub async fn connect_to(binary: &Path, subcommand: &str) -> Result<Self, BridgeError> {
+        let path = binary.to_path_buf();
         let mut child = Command::new(&path)
-            .arg("serve")
+            .arg(subcommand)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::inherit())
@@ -442,7 +446,7 @@ impl McpBridge {
     }
 
     /// Call an MCP tool by name with the given arguments.
-    async fn call_tool(&mut self, name: &str, args: Value) -> Result<Value, BridgeError> {
+    pub async fn call_tool(&mut self, name: &str, args: Value) -> Result<Value, BridgeError> {
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
 
         let request = serde_json::json!({
