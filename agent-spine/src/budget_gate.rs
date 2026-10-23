@@ -64,6 +64,12 @@ pub enum PreconditionError {
     },
     #[error("budget unavailable for node '{node}': heart did not report headroom ({reason})")]
     BudgetUnavailable { node: String, reason: String },
+    #[error("quota unavailable for node '{node}' provider '{provider}': {reason}")]
+    QuotaUnavailable {
+        node: String,
+        provider: String,
+        reason: String,
+    },
     #[error("unknown precondition check '{check}' on node '{node}'")]
     UnknownCheck { node: String, check: String },
 }
@@ -187,29 +193,18 @@ impl BudgetGate {
             )
             .await
             .map_err(|e| e.to_string())?;
-        summary["remaining_budget_usd"]
-            .as_f64()
-            .ok_or_else(|| "heart reported no remaining_budget_usd".to_string())
+        headroom_from(&summary)
     }
 
-    pub async fn query_quota_utilization(&self, provider: &str) -> f64 {
-        let heart_dir = agent_body_core::organ_state_dir("heart");
-        let heart_db = heart_dir.join("heart.db");
-        if heart_db.exists() {
-            if let Ok(conn) = rusqlite::Connection::open(&heart_db) {
-                let util: Option<f64> = conn
-                    .query_row(
-                        "SELECT utilization_pct FROM provider_quota_snapshots WHERE provider = ?1 ORDER BY updated_at DESC LIMIT 1",
-                        [provider],
-                        |r| r.get(0),
-                    )
-                    .ok();
-                if let Some(u) = util {
-                    return u;
-                }
-            }
-        }
-        0.0
+    pub async fn query_quota_utilization(&self, provider: &str) -> Result<f64, String> {
+        let mut heart = McpBridge::connect_to(Path::new(&self.heart_bin), "serve-mcp")
+            .await
+            .map_err(|e| e.to_string())?;
+        let snapshots = heart
+            .call_tool("heart_quota_status", serde_json::json!({}))
+            .await
+            .map_err(|e| e.to_string())?;
+        quota_utilization_from(&snapshots, provider)
     }
 
     pub async fn evaluate_step_preconditions(
@@ -256,7 +251,16 @@ impl BudgetGate {
                 "quota_available" => {
                     let provider = pre.provider.as_deref().unwrap_or("unknown");
                     let max_allowed = pre.max_utilization_pct.unwrap_or(100.0);
-                    let utilization = self.query_quota_utilization(provider).await;
+                    let utilization = match self.query_quota_utilization(provider).await {
+                        Ok(utilization) => utilization,
+                        Err(reason) => {
+                            return Err(PreconditionError::QuotaUnavailable {
+                                node: node_name.to_owned(),
+                                provider: provider.to_owned(),
+                                reason,
+                            });
+                        }
+                    };
                     if utilization > max_allowed {
                         return Err(PreconditionError::QuotaExceeded {
                             node: node_name.to_owned(),
@@ -280,6 +284,23 @@ impl BudgetGate {
 }
 
 #[must_use]
+fn headroom_from(summary: &serde_json::Value) -> Result<f64, String> {
+    summary["remaining_budget_usd"]
+        .as_f64()
+        .ok_or_else(|| "heart reported no remaining_budget_usd".to_string())
+}
+
+fn quota_utilization_from(snapshots: &serde_json::Value, provider: &str) -> Result<f64, String> {
+    snapshots
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|snapshot| snapshot["provider"].as_str() == Some(provider))
+        .max_by_key(|snapshot| snapshot["updated_at"].as_i64().unwrap_or(i64::MIN))
+        .and_then(|snapshot| snapshot["utilization_pct"].as_f64())
+        .ok_or_else(|| format!("heart has no quota snapshot for provider '{provider}'"))
+}
+
 pub fn phase_for_kind(kind: &str) -> &'static str {
     match kind {
         "approval_gate" => "approval",
@@ -409,9 +430,43 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn quota_is_read_from_the_latest_snapshot_for_the_provider() {
+        let snapshots = json!([
+            {"provider": "anthropic", "utilization_pct": 40.0, "updated_at": 100},
+            {"provider": "anthropic", "utilization_pct": 72.5, "updated_at": 200},
+            {"provider": "openai", "utilization_pct": 99.0, "updated_at": 300}
+        ]);
+        assert_eq!(
+            quota_utilization_from(&snapshots, "anthropic").unwrap(),
+            72.5
+        );
+    }
+
+    #[test]
+    fn quota_for_an_untracked_provider_fails_closed() {
+        let snapshots = json!([{"provider": "openai", "utilization_pct": 10.0, "updated_at": 1}]);
+        assert!(quota_utilization_from(&snapshots, "anthropic").is_err());
+    }
+
+    #[test]
+    fn headroom_is_read_from_the_usage_summary() {
+        assert_eq!(
+            headroom_from(&json!({"remaining_budget_usd": 12.5})).unwrap(),
+            12.5
+        );
+        assert!(headroom_from(&json!({})).is_err());
+    }
+
     #[tokio::test]
-    async fn quota_precondition_allows_when_under_the_limit() {
-        let gate = BudgetGate::from_env();
+    async fn quota_check_fails_closed_when_heart_cannot_be_reached() {
+        let gate = BudgetGate {
+            heart_url: String::new(),
+            heart_bin: "/nonexistent/agent-heart".into(),
+            enabled: true,
+            client: reqwest::Client::new(),
+            freeze_offenses: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        };
         let preconditions = vec![crate::workflow::StepPrecondition {
             check: "quota_available".into(),
             min_remaining_usd: None,
@@ -419,11 +474,13 @@ mod tests {
             window: Some("5h_rolling".into()),
             max_utilization_pct: Some(85.0),
         }];
-
-        let res = gate
-            .evaluate_step_preconditions("plan", &preconditions, 2.50, Some(20.00))
+        let result = gate
+            .evaluate_step_preconditions("plan", &preconditions, 0.0, None)
             .await;
-        assert!(res.is_ok());
+        assert!(matches!(
+            result,
+            Err(PreconditionError::QuotaUnavailable { .. })
+        ));
     }
 
     #[test]
