@@ -2,8 +2,8 @@ use serde_json::json;
 
 use agent_spine::cancellation::CancelToken;
 use agent_spine::idempotency::{
-    check_idempotency, IdempotencyRecord, IdempotencyStore, InMemoryIdempotencyStore,
-    SqliteIdempotencyStore,
+    IdempotencyRecord, IdempotencyStore, InMemoryIdempotencyStore, SqliteIdempotencyStore,
+    check_idempotency,
 };
 use agent_spine::supervisor::{Supervisor, SupervisorError};
 
@@ -122,10 +122,7 @@ async fn delegate_returns_the_payload_resumed_for_its_node() {
         .resume("review", json!({ "approved": true }))
         .unwrap();
 
-    assert_eq!(
-        task.await.unwrap().unwrap(),
-        json!({ "approved": true })
-    );
+    assert_eq!(task.await.unwrap().unwrap(), json!({ "approved": true }));
     assert!(supervisor.pending_tasks().is_empty());
 }
 
