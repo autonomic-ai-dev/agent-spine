@@ -407,6 +407,9 @@ impl<S: WorkflowState> Executor<S> {
                             budget_gate::BudgetGateError::Frozen { reason } => {
                                 ExecutorError::BudgetFrozen { reason }
                             }
+                            budget_gate::BudgetGateError::Unavailable { reason } => {
+                                ExecutorError::BudgetUnavailable { reason }
+                            }
                         })?;
                 }
             }
@@ -995,6 +998,8 @@ pub enum ExecutorError {
     PayloadTooLarge { size: usize, max: usize },
     #[error("token budget frozen: {reason}")]
     BudgetFrozen { reason: String },
+    #[error("token budget check unavailable: {reason}")]
+    BudgetUnavailable { reason: String },
     #[error("command node failed: {reason}")]
     CommandFailed { reason: String },
 }
