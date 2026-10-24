@@ -23,6 +23,14 @@ Summary: agent-spine controls how a workflow run stops, repeats, and recovers. I
   - Behaviour: `try_spawn_brain` (`src/wake_on_call.rs` line 48) starts the process. `wait_for_brain` (line 65) polls up to `max_attempts`.
   - Outcome: `true` when brain answers, `false` after the attempts run out. No test exists for this module.
 
+## Code
+
+- `agent-spine/src/cancellation.rs`
+- `agent-spine/src/idempotency.rs`
+- `agent-spine/src/supervisor.rs`
+- `agent-spine/src/jetstream_bridge.rs`
+- `agent-spine/src/wake_on_call.rs`
+
 ## How to get to it (user POV)
 
 - Signal: Ctrl-C or SIGTERM sent to a running `agent-spine run` or `agent-spine serve` process.

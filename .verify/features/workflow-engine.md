@@ -33,6 +33,42 @@ Summary: agent-spine loads a workflow YAML DAG, validates it against the schema,
   - Behaviour: Routes in `agent-spine/src/autonomic_api.rs` and `src/event.rs`: `GET /api/v1/health`, `POST /api/v1/workflows/run`, `GET /api/v1/executions/{id}`, `POST /api/v1/events`, `GET /api/v1/events/subscribe`.
   - Outcome: The routes are listed in the README's HTTP routes table, and `.verify/checks/route_drift.sh` checks that each one resolves to a `.route()` call in source. The response bodies are not verified by a test in this pass.
 
+## Code
+
+- `agent-spine/src/agent.rs`
+- `agent-spine/src/api.rs`
+- `agent-spine/src/async_sandbox.rs`
+- `agent-spine/src/autonomic_api.rs`
+- `agent-spine/src/brain_router.rs`
+- `agent-spine/src/budget_gate.rs`
+- `agent-spine/src/condition.rs`
+- `agent-spine/src/event.rs`
+- `agent-spine/src/execution_trace.rs`
+- `agent-spine/src/execution.rs`
+- `agent-spine/src/executor`
+- `agent-spine/src/global_workspace.rs`
+- `agent-spine/src/jetstream.rs`
+- `agent-spine/src/lib.rs`
+- `agent-spine/src/log.rs`
+- `agent-spine/src/main.rs`
+- `agent-spine/src/mcp_bridge.rs`
+- `agent-spine/src/mcp_server.rs`
+- `agent-spine/src/meta_router.rs`
+- `agent-spine/src/muscle_exec.rs`
+- `agent-spine/src/registry_workflow.rs`
+- `agent-spine/src/router.rs`
+- `agent-spine/src/sandbox.rs`
+- `agent-spine/src/setup.rs`
+- `agent-spine/src/snapshot.rs`
+- `agent-spine/src/speculative_hydrate.rs`
+- `agent-spine/src/state.rs`
+- `agent-spine/src/transition.rs`
+- `agent-spine/src/update.rs`
+- `agent-spine/src/workflow.rs`
+- `agent-spine/src/workflow_manager.rs`
+- `agent-spine/src/workflows.rs`
+- `agent-spine/Cargo.toml`
+
 ## How to get to it (user POV)
 
 - CLI: `agent-spine validate <file>`, `agent-spine run <file>`, `agent-spine serve`
