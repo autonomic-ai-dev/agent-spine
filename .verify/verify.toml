@@ -8,6 +8,7 @@ commands = [
   "sh .verify/checks/require_tests.sh --test execution_control_tests",
   "sh .verify/checks/require_tests.sh --test wake_on_call_tests",
   "sh .verify/checks/require_tests.sh budget_gate",
+  "sh .verify/checks/require_tests.sh --test budget_halt_tests",
   ".verify/playbooks/verify_budget_preconditions.sh",
   ".verify/playbooks/verify_workflow_engine.sh",
   ".verify/playbooks/verify_full_suite.sh",

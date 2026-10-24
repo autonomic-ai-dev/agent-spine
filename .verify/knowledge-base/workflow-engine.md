@@ -42,7 +42,7 @@ agent-spine loads a workflow YAML file, a directed acyclic graph of nodes, valid
 ## Known limits
 
 - The per-node budget check fails closed (plan item 3.3). If heart is unreachable, returns an HTTP error, an unparseable body, an error response, or no decision, the node is denied and the workflow halts. Only an approved decision lets it run. The precondition checks (headroom and quota) also fail closed.
-- The halt is the runner's error propagation. No workflow-level test checks that a denied node stops the run.
+- The halt is covered at workflow level. `tests/budget_halt_tests.rs` runs a one-agent workflow against a fake heart. A 500 answer returns `ExecutorError::BudgetUnavailable` and the node is never dispatched. An approval dispatches it.
 - The full-suite run sets `AUTONOMIC_BUDGET_GATE=0`, so it never exercises the per-node gate. The `budget_gate` guard runs those tests.
 - The HTTP response bodies have no test. Routes are checked for existence only.
 - Whether `validate` rejects an invalid file is not confirmed by any test.

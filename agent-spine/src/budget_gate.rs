@@ -108,6 +108,16 @@ impl BudgetGate {
         }
     }
 
+    pub fn with_heart_url(heart_url: impl Into<String>) -> Self {
+        Self {
+            heart_url: heart_url.into(),
+            heart_bin: String::new(),
+            enabled: true,
+            client: reqwest::Client::new(),
+            freeze_offenses: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        }
+    }
+
     pub async fn check_node(
         &self,
         node_kind: &str,
