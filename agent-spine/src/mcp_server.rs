@@ -1,7 +1,6 @@
-use rmcp::ServerHandler;
-use rmcp::model::{CallToolResult, Content, ErrorData as McpError, ServerInfo};
-use rmcp::serve_server;
-use rmcp::tool;
+use rmcp::handler::server::wrapper::Parameters;
+use rmcp::model::{CallToolResult, ContentBlock, ErrorData as McpError, ServerInfo};
+use rmcp::{ServerHandler, serve_server, tool, tool_handler, tool_router};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use std::path::PathBuf;
@@ -60,14 +59,14 @@ fn default_limit() -> u32 {
     10
 }
 
-#[tool(tool_box)]
+#[tool_router]
 impl SpineMcp {
     #[tool(
         description = "Submit a YAML workflow DAG definition for execution and return a workflow ID"
     )]
     async fn spine_submit_workflow(
         &self,
-        #[tool(aggr)] params: SubmitWorkflowParams,
+        Parameters(params): Parameters<SubmitWorkflowParams>,
     ) -> Result<CallToolResult, McpError> {
         let payload = serde_json::Value::Object(Default::default());
         match self.wf_manager.submit_yaml(&params.yaml, payload) {
@@ -78,7 +77,7 @@ impl SpineMcp {
                 });
                 let text =
                     serde_json::to_string_pretty(&result).unwrap_or_else(|_| "{}".to_string());
-                Ok(CallToolResult::success(vec![Content::text(text)]))
+                Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
             }
             Err(e) => Err(McpError::internal_error(e.to_string(), None)),
         }
@@ -87,7 +86,7 @@ impl SpineMcp {
     #[tool(description = "Check the status of a workflow execution by ID")]
     async fn spine_check_status(
         &self,
-        #[tool(aggr)] params: CheckStatusParams,
+        Parameters(params): Parameters<CheckStatusParams>,
     ) -> Result<CallToolResult, McpError> {
         match self.wf_manager.execution_status(&params.workflow_id) {
             Some(running) => {
@@ -100,7 +99,7 @@ impl SpineMcp {
                 });
                 let text =
                     serde_json::to_string_pretty(&result).unwrap_or_else(|_| "{}".to_string());
-                Ok(CallToolResult::success(vec![Content::text(text)]))
+                Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
             }
             None => Err(McpError::internal_error(
                 format!("workflow '{}' not found", params.workflow_id),
@@ -114,7 +113,7 @@ impl SpineMcp {
     )]
     async fn spine_list_workflows(
         &self,
-        #[tool(aggr)] params: ListWorkflowsParams,
+        Parameters(params): Parameters<ListWorkflowsParams>,
     ) -> Result<CallToolResult, McpError> {
         let workflows = self.wf_manager.list_executions();
         let recent: Vec<serde_json::Value> = workflows
@@ -132,20 +131,19 @@ impl SpineMcp {
             .collect();
 
         let text = serde_json::to_string_pretty(&recent).unwrap_or_else(|_| "[]".to_string());
-        Ok(CallToolResult::success(vec![Content::text(text)]))
+        Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
     }
 }
 
-#[tool(tool_box)]
+#[tool_handler]
 impl ServerHandler for SpineMcp {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo {
-            instructions: Some(
-                "Workflow supervision MCP server for agent-spine. Tools: spine_submit_workflow (submit a YAML DAG definition), spine_check_status (poll workflow status by ID), spine_list_workflows (list recent workflows)."
-                    .into(),
-            ),
-            ..Default::default()
-        }
+        let mut info = ServerInfo::default();
+        info.instructions = Some(
+            "Workflow supervision MCP server for agent-spine. Tools: spine_submit_workflow (submit a YAML DAG definition), spine_check_status (poll workflow status by ID), spine_list_workflows (list recent workflows)."
+                .into(),
+        );
+        info
     }
 }
 
