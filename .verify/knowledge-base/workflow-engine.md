@@ -23,7 +23,7 @@ agent-spine loads a workflow YAML file, a directed acyclic graph of nodes, valid
 ## Where the code is
 
 - Executor and engine: `agent-spine/src/` (`workflow.rs`, `executor/`)
-- Budget check: `agent-spine/src/budget_gate.rs` (`check_node`), with the runner's halt in `agent-spine/src/executor/runner.rs`
+- Budget check: `agent-spine/src/budget_gate.rs`, lines 127 to 149
 - HTTP routes: `src/autonomic_api.rs` and `src/event.rs`
 - Tests: `tests/engine_tests.rs`
 
@@ -37,13 +37,11 @@ agent-spine loads a workflow YAML file, a directed acyclic graph of nodes, valid
 
 - `sh .verify/checks/require_tests.sh --test engine_tests`: 9 tests, all passing. The timing races were fixed by replacing fixed sleeps with a bounded `wait_for_pending` poll.
 - `bash .verify/checks/route_drift.sh`: the README's HTTP table matches the `.route()` calls in source
-- `sh .verify/checks/require_tests.sh budget_gate`: 17 tests, including the fail-closed cases for heart
 
 ## Known limits
 
-- The per-node budget check fails closed (plan item 3.3). If heart is unreachable, returns an HTTP error, an unparseable body, an error response, or no decision, the node is denied and the workflow halts. Only an approved decision lets it run. The precondition checks (headroom and quota) also fail closed.
-- The halt is the runner's error propagation. No workflow-level test checks that a denied node stops the run.
-- The full-suite run sets `AUTONOMIC_BUDGET_GATE=0`, so it never exercises the per-node gate. The `budget_gate` guard runs those tests.
+- The per-node budget check fails open. If heart is unreachable, returns an error, or returns an unparseable body, delegation is allowed with a warning. Only an explicit `decision.allowed == false` or `frozen` blocks. The precondition checks (headroom and quota) fail closed, and they have tests. The fail-open path contradicts the plan's fail-closed rule. It is tracked as plan item 3.3.
+- The allowlisted run sets `AUTONOMIC_BUDGET_GATE=0`, so the suite never exercises the per-node gate.
 - The HTTP response bodies have no test. Routes are checked for existence only.
 - Whether `validate` rejects an invalid file is not confirmed by any test.
 
