@@ -95,11 +95,16 @@ Summary: agent-spine loads a workflow YAML DAG, validates it against the schema,
    - Why: Proves each README route row matches a `.route()` in source, and each source route has a README row.
    - Expected: `route drift: README routes and src routes agree`.
    - Impact: A failure means a route was added, renamed, or removed without its README row. Fix whichever side is wrong.
+3. **budget-gate-fail-closed** (sub-feature: budget-gate-node)
+   - Request: `sh .verify/checks/require_tests.sh budget_gate`
+   - Why: Proves each unavailable heart case (unreachable, HTTP error, unparseable body, error response, missing decision) is denied, and the approved case passes.
+   - Expected: 17 passed, 0 failed.
+   - Impact: A failure means a node could run while heart is unavailable. Fix the gate. Do not loosen the test.
 
 ## Gotchas
 
 - Resolved flake (2026-10-24): the three baseline failures (`test_fork_join_barrier`, `test_fork_join_with_multi_level_branches`, `test_executor_linear_run`) were timing races, not executor logic. Each test slept a fixed 50 ms and then asserted the pending set. Under parallel load the executor had not dispatched the node yet. The fix replaces each sleep with `wait_for_pending`, which polls for up to 5 s and keeps the same expected values. Ten consecutive runs of `engine_tests` pass 9 of 9. The full spine suite passes 61 tests with 0 failed.
-- Budget gate is split. The per-node check `check_node` (`agent-spine/src/budget_gate.rs` lines 127-149) fails open: an unreachable heart, an HTTP error, or an unparseable body logs a warning and allows delegation. Only an explicit `decision.allowed == false` or `frozen` blocks. The precondition checks (headroom and quota) fail closed, and tests cover that (`headroom_check_fails_closed_when_heart_cannot_be_reached`, `quota_check_fails_closed_when_heart_cannot_be_reached`). The fail-open per-node path contradicts the fail-closed rule in the improvement plan. Tracked as plan item 3.3.
-- The allowlisted verification (`AUTONOMIC_BUDGET_GATE=0 cargo test -p agent-spine`) turns the per-node gate off, so the suite never exercises it.
+- The per-node budget check `check_node` (`agent-spine/src/budget_gate.rs`) fails closed (plan item 3.3). An unreachable heart, an HTTP error, an unparseable body, an error response, or a missing decision returns `BudgetGateError::Unavailable`, and the runner halts the workflow with `ExecutorError::BudgetUnavailable`. A frozen decision keeps its first-offense warning, then blocks. Six tests cover the unavailable cases and the approved case (`node_is_denied_when_heart_is_unreachable` and the others in the `budget_gate` tests). The halt itself is the runner's `?` propagation, with no workflow-level test yet.
+- The full-suite entry (`AUTONOMIC_BUDGET_GATE=0 cargo test -p agent-spine`) turns the per-node gate off, so the suite never exercises it. The `budget_gate` guard runs the gate tests separately, through `require_tests.sh`.
 - The budget gate needs agent-heart on port 3101. `agent-spine/src/budget_gate.rs` defines the error "budget unavailable for node … heart did not report headroom", so an unreachable or silent heart is treated as a denial, not an allow. This comes from the error type. A test that proves the halt behaviour has not been run.
 - Not verified: whether any test in the suite feeds `validate` an invalid file. Confirm before claiming invalid DAGs are rejected.
