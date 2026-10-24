@@ -202,6 +202,16 @@ For complete architectural specifications, DAG state transitions, and MCP tool c
 
 ---
 
+## HTTP routes
+
+| Method | Path | Purpose |
+| :--- | :--- | :--- |
+| `GET` | `/api/v1/health` | Health check |
+| `POST` | `/api/v1/workflows/run` | Run a workflow |
+| `GET` | `/api/v1/executions/{id}` | Status of one execution |
+| `POST` | `/api/v1/events` | Publish an event to the bus |
+| `GET` | `/api/v1/events/subscribe` | Server-sent event stream. The optional `subject` query parameter filters it; the default `>` matches every subject |
+
 ## Development
 
 ```bash

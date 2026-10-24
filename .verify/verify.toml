@@ -1,5 +1,6 @@
 [verify]
 commands = [
+  "bash .verify/checks/route_drift.sh",
   "AUTONOMIC_BUDGET_GATE=0 cargo test -p agent-spine",
   "cargo clippy -p agent-spine -- -D warnings",
   "cargo check -p agent-spine",
