@@ -39,6 +39,8 @@ pub struct BudgetDecision {
 pub enum BudgetGateError {
     #[error("token budget frozen: {reason}")]
     Frozen { reason: String },
+    #[error("token budget check unavailable: {reason}")]
+    Unavailable { reason: String },
 }
 
 #[derive(Debug, Error, PartialEq)]
@@ -122,43 +124,47 @@ impl BudgetGate {
         };
 
         let url = format!("{}/budget/check", self.heart_url);
-        let resp = match self.client.post(&url).json(&req).send().await {
-            Ok(r) => r,
-            Err(e) => {
-                tracing::warn!("budget gate unreachable ({e}); allowing delegation");
-                return Ok(());
-            }
-        };
+        let resp = self
+            .client
+            .post(&url)
+            .json(&req)
+            .send()
+            .await
+            .map_err(|e| BudgetGateError::Unavailable {
+                reason: format!("heart unreachable: {e}"),
+            })?;
 
         if !resp.status().is_success() {
-            tracing::warn!("budget gate HTTP {}; allowing delegation", resp.status());
-            return Ok(());
+            return Err(BudgetGateError::Unavailable {
+                reason: format!("heart returned HTTP {}", resp.status()),
+            });
         }
 
-        let body: serde_json::Value = match resp.json().await {
-            Ok(v) => v,
-            Err(e) => {
-                tracing::warn!("budget gate parse error ({e}); allowing delegation");
-                return Ok(());
-            }
-        };
+        let body: serde_json::Value =
+            resp.json()
+                .await
+                .map_err(|e| BudgetGateError::Unavailable {
+                    reason: format!("heart response unparseable: {e}"),
+                })?;
 
         if body.get("ok").and_then(serde_json::Value::as_bool) != Some(true) {
-            tracing::warn!("budget gate error response; allowing delegation");
-            return Ok(());
+            return Err(BudgetGateError::Unavailable {
+                reason: "heart returned an error response".into(),
+            });
         }
 
-        let Some(decision_val) = body.get("decision") else {
-            return Ok(());
-        };
+        let decision_val = body
+            .get("decision")
+            .ok_or_else(|| BudgetGateError::Unavailable {
+                reason: "heart response has no decision".into(),
+            })?;
 
-        let decision: BudgetDecision = match serde_json::from_value(decision_val.clone()) {
-            Ok(dec) => dec,
-            Err(e) => {
-                tracing::warn!("budget gate decision parse ({e}); allowing delegation");
-                return Ok(());
-            }
-        };
+        let decision: BudgetDecision =
+            serde_json::from_value(decision_val.clone()).map_err(|e| {
+                BudgetGateError::Unavailable {
+                    reason: format!("heart decision unparseable: {e}"),
+                }
+            })?;
 
         if !decision.allowed || decision.frozen {
             // First freeze per phase is a warning — subsequent ones fail hard
@@ -402,6 +408,112 @@ mod tests {
                 current: 15.50,
                 max: 15.00
             }
+        );
+    }
+
+    fn http_response(status: &str, body: &str) -> String {
+        format!(
+            "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        )
+    }
+
+    async fn heart_answering(response: String) -> String {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut request = [0u8; 4096];
+            let _ = tokio::io::AsyncReadExt::read(&mut stream, &mut request).await;
+            tokio::io::AsyncWriteExt::write_all(&mut stream, response.as_bytes())
+                .await
+                .unwrap();
+        });
+        format!("http://{addr}")
+    }
+
+    fn gate_for(heart_url: String) -> BudgetGate {
+        BudgetGate {
+            heart_url,
+            heart_bin: String::new(),
+            enabled: true,
+            client: reqwest::Client::new(),
+            freeze_offenses: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        }
+    }
+
+    async fn check_against(response: String) -> Result<(), BudgetGateError> {
+        gate_for(heart_answering(response).await)
+            .check_node("agent", 100)
+            .await
+    }
+
+    #[tokio::test]
+    async fn node_is_denied_when_heart_is_unreachable() {
+        let closed = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = closed.local_addr().unwrap();
+        drop(closed);
+        let err = gate_for(format!("http://{addr}"))
+            .check_node("agent", 100)
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            BudgetGateError::Unavailable { ref reason } if reason.starts_with("heart unreachable")
+        ));
+    }
+
+    #[tokio::test]
+    async fn node_is_denied_when_heart_returns_an_http_error() {
+        let err = check_against(http_response("500 Internal Server Error", "{}"))
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            BudgetGateError::Unavailable { ref reason } if reason.starts_with("heart returned HTTP 500")
+        ));
+    }
+
+    #[tokio::test]
+    async fn node_is_denied_when_heart_returns_an_unparseable_body() {
+        let err = check_against(http_response("200 OK", "not json"))
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            BudgetGateError::Unavailable { ref reason } if reason.starts_with("heart response unparseable")
+        ));
+    }
+
+    #[tokio::test]
+    async fn node_is_denied_when_heart_reports_an_error_response() {
+        let err = check_against(http_response("200 OK", r#"{"ok":false,"error":"db"}"#))
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            BudgetGateError::Unavailable { ref reason } if reason == "heart returned an error response"
+        ));
+    }
+
+    #[tokio::test]
+    async fn node_is_denied_when_the_response_has_no_decision() {
+        let err = check_against(http_response("200 OK", r#"{"ok":true}"#))
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            BudgetGateError::Unavailable { ref reason } if reason == "heart response has no decision"
+        ));
+    }
+
+    #[tokio::test]
+    async fn node_is_allowed_when_heart_approves_the_spend() {
+        let approved = r#"{"ok":true,"decision":{"allowed":true,"frozen":false,"reason":""}}"#;
+        assert!(
+            check_against(http_response("200 OK", approved))
+                .await
+                .is_ok()
         );
     }
 
