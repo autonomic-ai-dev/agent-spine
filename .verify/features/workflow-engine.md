@@ -31,7 +31,7 @@ Summary: agent-spine loads a workflow YAML DAG, validates it against the schema,
 - `api-v1-http`: Runs workflows, reads executions, and publishes or subscribes to events over HTTP.
   - Intent: Give non-CLI callers a way to start and observe a workflow.
   - Behaviour: Routes in `agent-spine/src/autonomic_api.rs` and `src/event.rs`: `GET /api/v1/health`, `POST /api/v1/workflows/run`, `GET /api/v1/executions/{id}`, `POST /api/v1/events`, `GET /api/v1/events/subscribe`.
-  - Outcome: Each route returns its documented response. Not verified by a test in this pass.
+  - Outcome: The routes are listed in the README's HTTP routes table, and `.verify/checks/route_drift.sh` checks that each one resolves to a `.route()` call in source. The response bodies are not verified by a test in this pass.
 
 ## How to get to it (user POV)
 
@@ -54,6 +54,11 @@ Summary: agent-spine loads a workflow YAML DAG, validates it against the schema,
    - Request (current): `sh .verify/checks/require_tests.sh --test engine_tests`. The guard fails on zero matched tests.
    - Expected: 9 passed, 0 failed. Verified 2026-10-24 by this command and by the 10-run check in Gotchas. The last guard output is in `.verify/artifacts/require-tests.log`.
    - Impact: A failure means node execution order is wrong. Fix the executor. Do not change the expected node lists.
+2. **route-drift** (sub-features: api-v1-http)
+   - Request: `bash .verify/checks/route_drift.sh`
+   - Why: Proves each README route row matches a `.route()` in source, and each source route has a README row.
+   - Expected: `route drift: README routes and src routes agree`.
+   - Impact: A failure means a route was added, renamed, or removed without its README row. Fix whichever side is wrong.
 
 ## Gotchas
 
