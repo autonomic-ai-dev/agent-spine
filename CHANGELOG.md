@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0-rc2] - 2026-10-26
+
+### Changed
+- Scoped to agent-brain and agent-spine. Other-tool integrations are removed: the agent-body-core dependency, the muscle and sandbox node kinds, the heart budget gate and its workflow settings, trace export, and the Docker sandbox runner. Workflows that use those node kinds fail validation.
+- Dependencies: rmcp 2.0, schemars 1, async-nats 0.47.
+
+### Migration
+- Rewrite workflows that use `muscle_exec` or `sandbox` nodes, or budget and precondition settings, to use `agent` nodes for work and `verify` nodes for shell checks.
+
+## [1.0.0-rc1] - 2026-10-24
+
+### Added
+- Durable executions and the heart budget check over MCP.
+- Route drift gate, HTTP routes table, and knowledge base.
+
+### Fixed
+- A node is denied when the heart budget check is unavailable.
+
 ## [1.0.0-beta.3.9] - 2026-10-21
 
 ### Added

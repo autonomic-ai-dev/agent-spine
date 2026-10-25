@@ -1,6 +1,6 @@
 [package]
 name = "agent-spine"
-version = "1.0.0-beta.3.9"
+version = "1.0.0-rc2"
 edition = "2024"
 license = "Apache-2.0"
 description = "A local-first, stateful workflow engine for supervising AI coding agents."
@@ -30,9 +30,9 @@ num_cpus = "1.16"
 tower-http = { version = "0.7.0", features = ["cors"] }
 tonic-web = "0.12"
 axum = "0.7"
-rmcp = { version = "0.1", features = ["server", "transport-io"] }
-schemars = "0.8"
-async-nats = { version = "0.39", optional = true }
+rmcp = { version = "2.0.0", features = ["server", "transport-io"] }
+schemars = "1"
+async-nats = { version = "0.47", optional = true }
 async-trait = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
 dirs = "6"
