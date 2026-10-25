@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tracing;
 
@@ -7,7 +8,24 @@ use crate::mcp_bridge::{self, McpBridge, RouteLimits, RouteTaskResponse};
 use crate::router::{ConfidenceRouter, RouterAction};
 use crate::wake_on_call;
 
-pub use agent_body_core::BrainProvenance;
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BrainProvenance {
+    pub context_id: String,
+    pub route_confidence: f64,
+    pub skills_used: Vec<String>,
+    pub agents_loaded: Vec<String>,
+}
+
+impl BrainProvenance {
+    pub fn new(context_id: String, route_confidence: f64) -> Self {
+        Self {
+            context_id,
+            route_confidence,
+            skills_used: Vec::new(),
+            agents_loaded: Vec::new(),
+        }
+    }
+}
 
 /// An optional enhancement over `ConfidenceRouter` that delegates escalation
 /// decisions to agent-brain's `route_task` MCP tool.

@@ -28,6 +28,7 @@ pub mod mcp_bridge;
 pub mod mcp_server;
 pub mod meta_router;
 pub mod muscle_exec;
+pub mod nats_bus;
 pub mod registry_workflow;
 pub mod router;
 pub mod sandbox;

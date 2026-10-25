@@ -6,10 +6,10 @@ pub async fn ensure_autonomic_stream(
 ) -> Result<jetstream::Context, String> {
     let js = jetstream::new(client.clone());
     js.get_or_create_stream(jetstream::stream::Config {
-        name: agent_body_core::STREAM_NAME.to_string(),
-        subjects: vec![agent_body_core::STREAM_SUBJECT_WILDCARD.to_string()],
+        name: crate::nats_bus::STREAM_NAME.to_string(),
+        subjects: vec![crate::nats_bus::STREAM_SUBJECT_WILDCARD.to_string()],
         storage: StorageType::File,
-        duplicate_window: agent_body_core::default_duplicate_window(),
+        duplicate_window: crate::nats_bus::default_duplicate_window(),
         max_age: Duration::from_secs(7 * 24 * 3600),
         ..Default::default()
     })

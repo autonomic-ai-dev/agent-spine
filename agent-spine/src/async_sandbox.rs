@@ -1,8 +1,8 @@
 use std::path::Path;
 use std::time::Duration;
 
-use agent_body_core::nats::subjects;
-use agent_body_core::{ExecuteResult, SandboxExecute};
+use crate::nats_bus::subjects;
+use crate::nats_bus::{ExecuteResult, SandboxExecute};
 use futures::StreamExt;
 use uuid::Uuid;
 
@@ -20,7 +20,7 @@ pub async fn run_sandbox_via_jetstream(
 ) -> Result<SandboxResult, String> {
     let client = match tokio::time::timeout(
         std::time::Duration::from_secs(3),
-        agent_body_core::connect_nats(),
+        crate::nats_bus::connect_nats(),
     )
     .await
     {

@@ -80,7 +80,7 @@ pub fn extract_completion(value: &Value) -> String {
 
 /// Best-effort async publish; no-op when NATS is unavailable.
 pub fn spawn_publish(event: ExecutionTraceEvent) {
-    if agent_body_core::default_nats_url().is_none() {
+    if crate::nats_bus::default_nats_url().is_none() {
         debug!("NATS unavailable; skipping execution trace publish");
         return;
     }
@@ -92,7 +92,7 @@ pub fn spawn_publish(event: ExecutionTraceEvent) {
 }
 
 async fn publish(event: &ExecutionTraceEvent) -> Result<(), String> {
-    let client = agent_body_core::connect_nats()
+    let client = crate::nats_bus::connect_nats()
         .await
         .map_err(|e| e.to_string())?;
     let js = crate::jetstream::ensure_autonomic_stream(&client).await?;

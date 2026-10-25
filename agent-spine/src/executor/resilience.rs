@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use serde::Serialize;
 use serde_json::Value;
 
-use agent_body_core::nats::subjects;
+use crate::nats_bus::subjects;
 
 pub use crate::workflow::DEFAULT_NODE_TIMEOUT_SECS;
 
@@ -75,7 +75,7 @@ pub struct DlqEntry {
 /// Publish a failed workflow node to `system.dlq` for operator review/replay.
 #[cfg(feature = "nats")]
 pub async fn publish_dlq(entry: &DlqEntry) -> Result<(), String> {
-    let client = agent_body_core::connect_nats()
+    let client = crate::nats_bus::connect_nats()
         .await
         .map_err(|e| format!("dlq nats connect: {e}"))?;
     let js = crate::jetstream::ensure_autonomic_stream(&client)

@@ -643,7 +643,7 @@ impl<S: WorkflowState> Executor<S> {
                                 let sandbox_result = {
                                     #[cfg(feature = "nats")]
                                     {
-                                        let jetstream_result = if agent_body_core::default_nats_url()
+                                        let jetstream_result = if crate::nats_bus::default_nats_url()
                                             .is_some()
                                         {
                                             crate::async_sandbox::run_sandbox_via_jetstream(

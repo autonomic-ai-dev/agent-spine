@@ -1,5 +1,5 @@
-use agent_body_core::StateTransitionEvent;
-use agent_body_core::nats::subjects;
+use crate::nats_bus::StateTransitionEvent;
+use crate::nats_bus::subjects;
 use tracing::{info, warn};
 
 use crate::supervisor::{Supervisor, WorkflowEvent};
@@ -96,7 +96,7 @@ pub fn spawn_state_bridge(supervisor: Supervisor, nats_url: String) {
     tokio::spawn(async move {
         let Ok(Ok(client)) = tokio::time::timeout(
             std::time::Duration::from_secs(3),
-            agent_body_core::connect_nats(),
+            crate::nats_bus::connect_nats(),
         )
         .await
         else {

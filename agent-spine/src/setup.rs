@@ -2,17 +2,66 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::process::Command;
 
-use agent_body_core::ui::ProgressRun;
+use std::cell::Cell;
+use std::fmt::Display;
+use std::rc::Rc;
 
 use crate::WorkflowDefinition;
+
+struct ProgressRun {
+    failed: Rc<Cell<usize>>,
+}
+
+struct ProgressStep {
+    failed: Rc<Cell<usize>>,
+}
+
+struct ProgressSummary {
+    failed: usize,
+}
+
+impl ProgressRun {
+    fn new(_title: impl Display) -> Self {
+        Self {
+            failed: Rc::default(),
+        }
+    }
+
+    fn with_total_hint(self, _total: usize) -> Self {
+        self
+    }
+
+    fn step(&mut self, _name: impl Display) -> ProgressStep {
+        ProgressStep {
+            failed: Rc::clone(&self.failed),
+        }
+    }
+
+    fn finish(self) -> ProgressSummary {
+        ProgressSummary {
+            failed: self.failed.get(),
+        }
+    }
+}
+
+impl ProgressStep {
+    fn done(self) {}
+
+    fn cached(self) {}
+
+    fn warn(self, _message: impl Display) {}
+
+    fn fail(self, _message: impl Display) {
+        self.failed.set(self.failed.get() + 1);
+    }
+}
 
 pub fn run_init(
     force: bool,
     dir: Option<PathBuf>,
     with: Option<String>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let _ = agent_body_core::run_legacy_migrations();
-    let config_dir = dir.unwrap_or_else(agent_body_core::spine_config_dir);
+    let config_dir = dir.unwrap_or_else(crate::global_workspace::spine_config_dir);
 
     let mut progress = ProgressRun::new("agent-spine init").with_total_hint(4);
 
@@ -33,7 +82,7 @@ pub fn run_init(
             println!("  Run: agent-brain registry sync --local  (if cache is empty)");
         }
         step.done();
-        progress.finish()?;
+        progress.finish();
         return Ok(());
     }
 
@@ -79,26 +128,6 @@ pub fn run_init(
         .map_err(|e| format!("failed to create workflows dir: {e}"))?;
     dirs.done();
 
-    let cfg = progress.step("config file");
-    let unified = agent_body_core::config_path();
-    if !unified.exists() {
-        agent_body_core::ensure_default_ecosystem_sections()
-            .map_err(|e| format!("init unified config: {e}"))?;
-    }
-    if agent_body_core::read_organ_section_raw("spine")
-        .map_err(|e| format!("read [spine]: {e}"))?
-        .is_none()
-    {
-        let spine_table: toml::Table = toml::from_str(CONFIG_TEMPLATE).unwrap_or_default();
-        agent_body_core::write_organ_section_raw("spine", &spine_table)
-            .map_err(|e| format!("write [spine]: {e}"))?;
-        println!("✓ Created [spine] in {}", unified.display());
-        cfg.done();
-    } else {
-        cfg.cached();
-        println!("  [spine] exists in {}", unified.display());
-    }
-
     let wf = progress.step("workflow file");
     let (workflow_name, workflow_yaml) = if let Some(ref kind) = with {
         let (name, yaml) = crate::registry_workflow::resolve_workflow_yaml(kind).ok_or_else(|| {
@@ -124,7 +153,7 @@ pub fn run_init(
         println!("  Workflow exists: {}", workflow_path.display());
     }
 
-    progress.finish()?;
+    progress.finish();
     println!();
     println!("Next steps:");
     println!("  Validate your workflow:");
@@ -179,8 +208,8 @@ pub fn run_doctor() -> Result<(), Box<dyn std::error::Error>> {
         brain.warn("not found (optional — MCP routing & memory)");
     }
 
-    let config_dir = agent_body_core::spine_config_dir();
-    let legacy = agent_body_core::legacy_spine_config_dir();
+    let config_dir = crate::global_workspace::spine_config_dir();
+    let legacy = crate::global_workspace::legacy_spine_config_dir();
     let cfg = progress.step("config directory");
     if config_dir.exists() {
         println!("✓ spine state: {}", config_dir.display());
@@ -195,20 +224,6 @@ pub fn run_doctor() -> Result<(), Box<dyn std::error::Error>> {
             "{} not yet created — run `agent-spine init`",
             config_dir.display()
         ));
-    }
-
-    let unified = agent_body_core::config_path();
-    let unified_step = progress.step("unified config");
-    if unified.is_file()
-        && agent_body_core::read_organ_section_raw("spine")
-            .ok()
-            .flatten()
-            .is_some()
-    {
-        println!("✓ [spine] in {}", unified.display());
-        unified_step.done();
-    } else {
-        unified_step.warn(format!("missing [spine] in {}", unified.display()));
     }
 
     let example = config_dir.join("workflows/example.yaml");
@@ -228,7 +243,7 @@ pub fn run_doctor() -> Result<(), Box<dyn std::error::Error>> {
         wf.cached();
     }
 
-    let summary = progress.finish()?;
+    let summary = progress.finish();
     println!();
     println!("agent-spine v{}", env!("CARGO_PKG_VERSION"));
     if all_ok && summary.failed == 0 {
@@ -238,21 +253,6 @@ pub fn run_doctor() -> Result<(), Box<dyn std::error::Error>> {
     }
     Ok(())
 }
-
-const CONFIG_TEMPLATE: &str = r##"# agent-spine configuration
-# See https://github.com/aeswibon/agent-spine for documentation.
-
-[server]
-port = 3000
-db = "state.db"
-
-[brain]
-# Path to agent-brain binary (optional — resolves from PATH or BRAIN_PATH)
-# path = "/usr/local/bin/agent-brain"
-
-[routing]
-max_failures = 3
-"##;
 
 const EXAMPLE_WORKFLOW: &str = r##"name: dev-pipeline
 version: 1
