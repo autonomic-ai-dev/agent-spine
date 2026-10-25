@@ -602,5 +602,4 @@ fn check_spine_version(required: &str) -> Result<(), WorkflowValidationError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
 }

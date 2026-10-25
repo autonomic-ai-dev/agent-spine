@@ -66,7 +66,8 @@ pub struct ExecuteResult {
 
 #[cfg(feature = "nats")]
 pub async fn connect_nats() -> Result<async_nats::Client, async_nats::ConnectError> {
-    let url = std::env::var("AUTONOMIC_NATS_URL").unwrap_or_else(|_| "nats://127.0.0.1:4222".to_string());
+    let url =
+        std::env::var("AUTONOMIC_NATS_URL").unwrap_or_else(|_| "nats://127.0.0.1:4222".to_string());
     let mut opts = async_nats::ConnectOptions::new();
 
     if !nats_insecure_mode() {

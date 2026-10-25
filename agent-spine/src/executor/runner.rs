@@ -161,7 +161,6 @@ impl<S: WorkflowState> Executor<S> {
         }
     }
 
-
     /// Attach a cancel token for graceful shutdown.
     #[must_use]
     pub fn with_cancel_token(mut self, token: CancelToken) -> Self {
