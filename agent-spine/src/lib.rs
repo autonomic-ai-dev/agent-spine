@@ -8,14 +8,11 @@
 pub mod agent;
 pub mod api;
 #[cfg(feature = "nats")]
-pub mod async_sandbox;
 pub mod autonomic_api;
 pub mod brain_router;
-pub mod budget_gate;
 pub mod cancellation;
 pub(crate) mod condition;
 pub mod event;
-pub mod execution_trace;
 pub mod executor;
 pub mod global_workspace;
 pub mod idempotency;
@@ -27,10 +24,9 @@ pub mod log;
 pub mod mcp_bridge;
 pub mod mcp_server;
 pub mod meta_router;
-pub mod muscle_exec;
+pub mod nats_bus;
 pub mod registry_workflow;
 pub mod router;
-pub mod sandbox;
 pub mod setup;
 pub mod speculative_hydrate;
 pub mod state;

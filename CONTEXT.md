@@ -10,7 +10,7 @@
 
 ## 1. Executive Summary & Biological Role
 
-In the Autonomic 11-organ architecture, **`agent-spine`** serves as the **Deterministic Workflow Engine and Central Nervous Axis** (analogous to Kubernetes Jobs, Argo Workflows, or Temporal). 
+**`agent-spine`** is the **Deterministic Workflow Engine** (analogous to Kubernetes Jobs, Argo Workflows, or Temporal). 
 
 Most AI coding agents fail because they rely on unconstrained, probabilistic prompt loops:
 - The agent is asked *"fix bug X"*, and it improvises an unpredictable series of file reads, edits, and terminal commands.
@@ -31,10 +31,7 @@ flowchart TD
     RunCmd["agent-spine run <workflow.yaml>"] --> Parse["Parse YAML & Validate Schema"]
     Parse --> CheckCycle{"DAG Cycle<br>Check"}
     CheckCycle -->|Cycle Detected| ErrExit["Exit with validation error"]
-    CheckCycle -->|Valid DAG| BudgetCheck{"agent-heart<br>POST /budget/check"}
-    
-    BudgetCheck -->|Budget Exceeded| Deny["Halt: Token budget limit reached"]
-    BudgetCheck -->|Approved| InitState["Initialize Execution in state.db"]
+    CheckCycle -->|Valid DAG| InitState["Initialize Execution in state.db"]
 
     subgraph DAGExecution ["Tokio Asynchronous Graph Walker"]
         InitState --> Walk["Evaluate Ready Nodes (Dependencies Resolved)"]
@@ -44,7 +41,7 @@ flowchart TD
         Walk --> VerifyNode["Verify Node<br>(Runs allowlisted command)"]
         Walk --> GateNode["ApprovalGate Node<br>(Pauses tokio task)"]
         
-        AgentNode --> ExecNode["Execute Step via LocalAgent / Muscle"]
+        AgentNode --> ExecNode["Execute Step via LocalAgent"]
         ExecNode --> SaveSnap["Record State Snapshot"]
         
         VerifyNode --> CheckExit{"Exit Code == 0?"}
@@ -63,7 +60,7 @@ flowchart TD
         CheckComplete -->|No| FinishWork["Workflow Execution Complete"]
     end
 
-    FinishWork --> NervesNotify["Publish SPINE.workflow.completed via JetStream"]
+    FinishWork --> CompletionNotify["Publish SPINE.workflow.completed via JetStream"]
 ```
 
 ### 2.1 The Four First-Class Node Kinds (`NodeKind`)
@@ -71,7 +68,7 @@ flowchart TD
 1. **`Agent`**: Represents an isolated cognitive subtask. The step defines input variables, expected output keys, and optional prompt instructions. The executor hydrates required context via `BrainRouter` (querying `agent-brain`), runs the subtask, and collects outputs.
 2. **`Checkpoint`**: An explicit synchronization barrier that captures an immutable state snapshot (`Snapshot`). Contains monotonic step index, timestamp, parent snapshot hash, and full environment state.
 3. **`Verify`**: Executes an allowlisted validation command (e.g. `cargo check`, `npm test`, `pytest`). Must return exit code 0 to transition to subsequent nodes. Connects with `agent-brain verify` to attribute outcomes.
-4. **`ApprovalGate`**: A Human-in-the-Loop (HITL) safety barrier. When the execution reaches this node, the `tokio` worker suspends execution, enters the `PendingApproval` state, and emits events via `agent-nerves` (or webhooks via `agent-mouth`). Execution remains blocked until an authenticated operator submits `agent-spine approve` or the MCP `spine_approve_step` tool is called.
+4. **`ApprovalGate`**: A Human-in-the-Loop (HITL) safety barrier. When the execution reaches this node, the `tokio` worker suspends execution, enters the `PendingApproval` state, and emits events on the NATS bus when one is configured. Execution remains blocked until an authenticated operator submits `agent-spine approve` or the MCP `spine_approve_step` tool is called.
 
 ---
 
@@ -109,7 +106,7 @@ Every successful node transition creates an append-only entry in `state.db`. If 
   - `--meta <STRING>`: Attach user task context or descriptive objective to the run.
   - `--var <KEY=VALUE>`: Supply or override input variables for the workflow template (repeatable).
   - `--resume <SNAPSHOT_ID>`: Resume execution from a prior immutable state snapshot.
-  - `--dry-run`: Parse, validate graph dependencies, and perform token budget check without executing steps.
+  - `--dry-run`: Parse and validate graph dependencies without executing steps.
   - `--db <PATH>`: Custom path to SQLite state database (default: `~/.autonomic/state/spine/state.db`).
 - `agent-spine validate <WORKFLOW.yaml>`: Validate YAML syntax, schema version, node kinds, and ensure DAG is acyclic (no circular dependencies).
 - `agent-spine status [<WORKFLOW_ID>]`: Inspect real-time status of running, paused, or completed workflows.
@@ -134,7 +131,7 @@ Every successful node transition creates an append-only entry in `state.db`. If 
   - `--port <PORT>`: HTTP API port (default: `3001`).
   - `--relay-port <PORT>`: Dashboard relay port (default: `3100`).
   - `--nats-url <URL>`: NATS broker URL (default: `nats://127.0.0.1:4222`).
-- `agent-spine mcp-serve`: Start standalone stdio MCP server exposing workflow orchestration tools directly to an IDE or `agent-body` gateway.
+- `agent-spine mcp-serve`: Start standalone stdio MCP server exposing workflow orchestration tools directly to an IDE or any MCP host.
 
 ### 4.5 Diagnostics & Brain Integration
 - `agent-spine doctor`: Verify rustc toolchain, SQLite database access, NATS JetStream reachability, and agent-brain MCP connectivity.
@@ -145,7 +142,7 @@ Every successful node transition creates an append-only entry in `state.db`. If 
 
 ## 5. Model Context Protocol (MCP) Tool Specifications
 
-When running in MCP mode (`agent-spine mcp-serve` or via `agent-body serve-mcp`), the following tools are exposed:
+When running in MCP mode (`agent-spine mcp-serve`), the following tools are exposed:
 
 ### 5.1 `spine_submit_workflow`
 - **Description:** Submits a declarative YAML workflow for execution. Returns execution ID for tracking.
@@ -267,6 +264,5 @@ nodes:
   ```bash
   # Verify NATS broker is running
   curl -s http://127.0.0.1:8222/healthz
-  # If stopped, restart cluster supervision
-  autonomic restart nerves
+  # Restart the NATS server with your installation's service manager
   ```

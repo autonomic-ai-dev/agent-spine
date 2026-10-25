@@ -1,29 +1,10 @@
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
-use agent_body_core::cli::apply_progress_env;
-use agent_body_core::ui::ProgressMode;
 use agent_spine::WorkflowDefinition;
 use agent_spine::mcp_bridge::{McpBridge, RouteLimits};
-
-#[derive(Clone, Copy, Debug, ValueEnum)]
-enum ProgressArg {
-    Auto,
-    Plain,
-    Quiet,
-}
-
-impl From<ProgressArg> for ProgressMode {
-    fn from(value: ProgressArg) -> Self {
-        match value {
-            ProgressArg::Auto => ProgressMode::Auto,
-            ProgressArg::Plain => ProgressMode::Plain,
-            ProgressArg::Quiet => ProgressMode::Quiet,
-        }
-    }
-}
 
 #[derive(Debug, Parser)]
 #[command(
@@ -32,10 +13,6 @@ impl From<ProgressArg> for ProgressMode {
     about = "Stateful workflow supervision for AI coding agents"
 )]
 struct Cli {
-    /// Progress output style: auto, plain, or quiet
-    #[arg(long, value_enum, global = true, default_value = "auto")]
-    progress: ProgressArg,
-
     #[command(subcommand)]
     command: Command,
 }
@@ -61,7 +38,7 @@ enum Command {
     Doctor,
     /// Display daemon logs
     Log {
-        /// Daemon name (e.g. spine, nerves, heart) or "all"
+        /// Daemon name (e.g. spine) or "all"
         name: Option<String>,
         /// Follow log output (tail -f)
         #[arg(short, long)]
@@ -182,7 +159,7 @@ enum EventCommand {
     },
     /// Publish an event to the bus.
     Pub {
-        /// Event subject (e.g. "agent.heart.beat").
+        /// Event subject (e.g. "agent.spine.state").
         subject: String,
         /// Event payload as JSON string.
         payload: String,
@@ -195,7 +172,7 @@ enum EventCommand {
     },
     /// Subscribe to events from the bus (prints to stdout as JSON).
     Sub {
-        /// Subject filter (e.g. "agent.heart.>" for wildcard).
+        /// Subject filter (e.g. "agent.spine.>" for wildcard).
         #[arg(short, long, default_value = ">")]
         subject: String,
         /// Event bus URL (default: http://localhost:3100).
@@ -271,7 +248,6 @@ async fn main() {
     }
 
     let cli = Cli::parse();
-    apply_progress_env(cli.progress.into());
 
     if let Err(error) = run(cli.command).await {
         eprintln!("Error: {error}");
@@ -672,7 +648,7 @@ async fn run_event(command: EventCommand) -> Result<(), Box<dyn std::error::Erro
     match command {
         EventCommand::Serve { port, db, nats_url } => {
             let db = agent_spine::global_workspace::resolve_state_db(db).ok();
-            let nats_url = nats_url.or_else(agent_body_core::default_nats_url);
+            let nats_url = nats_url.or_else(agent_spine::nats_bus::default_nats_url);
             let bus = connect_event_bus(nats_url).await?;
             let registry = Arc::new(AgentRegistry::new());
             let handle = start_event_server(bus, registry, port, db);

@@ -345,7 +345,7 @@ impl JetStreamEventBus {
     pub async fn connect(_url: &str) -> Result<Self, EventBusError> {
         let client = tokio::time::timeout(
             std::time::Duration::from_secs(3),
-            agent_body_core::connect_nats(),
+            crate::nats_bus::connect_nats(),
         )
         .await
         .map_err(|_| EventBusError::Nats("timeout connecting to NATS".into()))?
@@ -391,7 +391,7 @@ impl EventBus for JetStreamEventBus {
 pub async fn connect_event_bus(
     nats_url: Option<String>,
 ) -> Result<std::sync::Arc<dyn EventBus>, EventBusError> {
-    let url = nats_url.or_else(agent_body_core::default_nats_url);
+    let url = nats_url.or_else(crate::nats_bus::default_nats_url);
     if let Some(url) = url {
         match JetStreamEventBus::connect(&url).await {
             Ok(bus) => {
@@ -423,7 +423,7 @@ impl NatsEventBus {
     pub async fn connect(_url: &str) -> Result<Self, EventBusError> {
         let client = tokio::time::timeout(
             std::time::Duration::from_secs(3),
-            agent_body_core::connect_nats(),
+            crate::nats_bus::connect_nats(),
         )
         .await
         .map_err(|_| EventBusError::Nats("timeout connecting to NATS".into()))?

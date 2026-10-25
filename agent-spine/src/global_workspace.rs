@@ -1,13 +1,50 @@
-use agent_body_core::ExecutionId;
+use crate::execution::ExecutionId;
 use serde_json::Value;
 use std::io;
 use std::path::PathBuf;
 
 use crate::{StateSnapshot, WorkflowState};
 
-pub use agent_body_core::global_workspace::{
-    autonomic_root, default_state_db, ensure_dirs, executions_dir, spine_logs_dir,
-};
+pub fn autonomic_root() -> PathBuf {
+    std::env::var("AUTONOMIC_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| home_dir().join(".autonomic"))
+}
+
+fn home_dir() -> PathBuf {
+    dirs::home_dir()
+        .or_else(|| std::env::var("HOME").ok().map(PathBuf::from))
+        .unwrap_or_else(|| PathBuf::from("."))
+}
+
+pub fn spine_logs_dir() -> PathBuf {
+    autonomic_root().join("logs").join("spine")
+}
+
+pub fn default_state_db() -> PathBuf {
+    spine_logs_dir().join("state.db")
+}
+
+pub fn executions_dir() -> PathBuf {
+    spine_logs_dir().join("executions")
+}
+
+pub fn spine_config_dir() -> PathBuf {
+    autonomic_root().join("state").join("spine")
+}
+
+pub fn legacy_spine_config_dir() -> PathBuf {
+    dirs::config_dir()
+        .unwrap_or_else(|| PathBuf::from("/tmp"))
+        .join("agent-spine")
+}
+
+pub fn ensure_dirs() -> io::Result<()> {
+    std::fs::create_dir_all(spine_logs_dir())?;
+    std::fs::create_dir_all(executions_dir())?;
+    std::fs::create_dir_all(autonomic_root())?;
+    Ok(())
+}
 
 /// Resolve CLI `--db` default
 pub fn resolve_state_db(db: Option<PathBuf>) -> io::Result<PathBuf> {
