@@ -1,6 +1,6 @@
 # workflow-engine
 
-Summary: agent-spine loads a workflow YAML DAG, validates it against the schema, and executes its nodes in dependency order, including linear runs and fork-join branches, with an LLM budget check before LLM-heavy nodes.
+Summary: agent-spine loads a workflow YAML DAG, validates it against the schema, and executes its nodes in dependency order, including linear runs and fork-join branches.
 
 ## Sub-features
 
@@ -20,10 +20,6 @@ Summary: agent-spine loads a workflow YAML DAG, validates it against the schema,
   - Intent: Allow independent work to overlap while a join node waits for every branch.
   - Behaviour: Covered by `test_fork_join_barrier` and `test_fork_join_with_multi_level_branches`.
   - Outcome: Every branch executes before the join, and multi-level branches all execute.
-- `budget-gate-node`: Asks agent-heart whether an LLM node may run.
-  - Intent: Stop an LLM-heavy node before it spends tokens over the ceiling.
-  - Behaviour: Before an LLM node, spine calls `POST /budget/check` on agent-heart.
-  - Outcome: Allowed nodes run. Denied nodes halt the workflow.
 - `dashboard-and-grpc`: Serves the gRPC API and dashboard. The gRPC default port is 3100 (`agent-spine/src/main.rs` line 174). The dashboard port defaults to port + 1.
   - Intent: Let the TUI and UI read workflow state.
   - Behaviour: `agent-spine serve` starts gRPC and the dashboard API.
@@ -36,7 +32,7 @@ Summary: agent-spine loads a workflow YAML DAG, validates it against the schema,
 ## How to get to it (user POV)
 
 - CLI: `agent-spine validate <file>`, `agent-spine run <file>`, `agent-spine serve`
-- MCP: `spine_submit_workflow`, `spine_check_status`, `spine_list_workflows` through agent-body
+- MCP: `spine_submit_workflow`, `spine_check_status`, `spine_list_workflows` through the agent-spine MCP server
 - Bridge: `agent-spine brain route <task>` and `agent-spine brain health`
 
 ## Verification Suites (Targeted Test Commands)
@@ -58,7 +54,4 @@ Summary: agent-spine loads a workflow YAML DAG, validates it against the schema,
 ## Gotchas
 
 - Resolved flake (2026-10-24): the three baseline failures (`test_fork_join_barrier`, `test_fork_join_with_multi_level_branches`, `test_executor_linear_run`) were timing races, not executor logic. Each test slept a fixed 50 ms and then asserted the pending set. Under parallel load the executor had not dispatched the node yet. The fix replaces each sleep with `wait_for_pending`, which polls for up to 5 s and keeps the same expected values. Ten consecutive runs of `engine_tests` pass 9 of 9. The full spine suite passes 61 tests with 0 failed.
-- Budget gate is split. The per-node check `check_node` (`agent-spine/src/budget_gate.rs` lines 127-149) fails open: an unreachable heart, an HTTP error, or an unparseable body logs a warning and allows delegation. Only an explicit `decision.allowed == false` or `frozen` blocks. The precondition checks (headroom and quota) fail closed, and tests cover that (`headroom_check_fails_closed_when_heart_cannot_be_reached`, `quota_check_fails_closed_when_heart_cannot_be_reached`). The fail-open per-node path contradicts the fail-closed rule in the improvement plan. Tracked as plan item 3.3.
-- The allowlisted verification (`AUTONOMIC_BUDGET_GATE=0 cargo test -p agent-spine`) turns the per-node gate off, so the suite never exercises it.
-- The budget gate needs agent-heart on port 3101. `agent-spine/src/budget_gate.rs` defines the error "budget unavailable for node … heart did not report headroom", so an unreachable or silent heart is treated as a denial, not an allow. This comes from the error type. A test that proves the halt behaviour has not been run.
 - Not verified: whether any test in the suite feeds `validate` an invalid file. Confirm before claiming invalid DAGs are rejected.

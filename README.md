@@ -56,11 +56,9 @@ flowchart TD
 | **Standalone** | `agent-spine serve` | Start gRPC event bus + dashboard API on `:3100` |
 | **Standalone** | `agent-spine mcp-serve` | Start MCP stdio server only (for gateway aggregation) |
 | **Standalone** | `agent-spine validate workflow.yaml` | Schema validation without execution |
-| **Integrated** | agent-spine `:3100` | Peripheral organs register as event subscribers |
 | **Integrated** | BrainRouter | MCP bridge to agent-brain for context per node |
-| **Integrated** | agent-heart budget gate | Spine checks `/budget/check` before LLM-heavy nodes |
 
-In standalone mode, agent-spine is a local workflow runner. In integrated mode, it becomes the **event backbone** — organs register, publish domain events (`*.executed`, `*.indexed`, `*.failed`), and agent-spine orchestrates multi-organ pipelines.
+agent-spine is a local workflow runner. It exposes its workflow tools over MCP to any host that connects to it.
 
 ---
 

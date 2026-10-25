@@ -9,7 +9,6 @@ use tracing::Instrument;
 use crate::cancellation::CancelToken;
 
 use crate::brain_router::BrainRouter;
-use crate::budget_gate::{self, BudgetGate};
 use crate::condition;
 use crate::router::RouterAction;
 use crate::state::StateError;
@@ -141,7 +140,6 @@ pub struct Executor<S: WorkflowState> {
     state_store: Arc<Mutex<S>>,
     supervisor: Supervisor,
     brain: Option<BrainRouter>,
-    budget_gate: BudgetGate,
     snapshot_config: SnapshotConfig,
     cancel_token: CancelToken,
 }
@@ -158,18 +156,11 @@ impl<S: WorkflowState> Executor<S> {
             state_store,
             supervisor,
             brain: None,
-            budget_gate: BudgetGate::from_env(),
             snapshot_config: SnapshotConfig::default(),
             cancel_token: CancelToken::new(),
         }
     }
 
-    /// Attach a budget gate (defaults to `AUTONOMIC_HEART_URL` / `AUTONOMIC_BUDGET_GATE`).
-    #[must_use]
-    pub fn with_budget_gate(mut self, gate: BudgetGate) -> Self {
-        self.budget_gate = gate;
-        self
-    }
 
     /// Attach a cancel token for graceful shutdown.
     #[must_use]
@@ -303,7 +294,6 @@ impl<S: WorkflowState> Executor<S> {
         let workflow_name = self.workflow.definition().name().to_owned();
         tracing::info!("Starting execution of workflow '{}'", workflow_name);
 
-        let initial_payload_for_trace = initial_payload.clone();
         let mut current_snapshot = StateSnapshot::initial(execution_id, initial_payload);
 
         self.prepare_and_append_snapshot(&self.state_store, current_snapshot.clone())?;
@@ -376,7 +366,6 @@ impl<S: WorkflowState> Executor<S> {
                         | NodeKind::Router
                         | NodeKind::Debate
                         | NodeKind::Vote
-                        | NodeKind::Sandbox
                         | NodeKind::Hydrate
                 ) {
                     let node_kind_str = node.kind().to_string();
@@ -390,25 +379,8 @@ impl<S: WorkflowState> Executor<S> {
                     timeout_secs: node.timeout_secs(),
                     description: node.description().map(String::from),
                     escalation_model: node.escalation_model().map(String::from),
-                    sandbox_config: node.sandbox_config().cloned(),
                     payload: node_payload,
                 });
-            }
-
-            // ── Phase 1b: Predictive token budget gate (agent-heart) ──
-            for task in &node_tasks {
-                if budget_gate::requires_budget_check(&task.kind) {
-                    let tokens = budget_gate::estimated_tokens_from_payload(&task.payload);
-                    let kind = task.kind.to_string();
-                    self.budget_gate
-                        .check_node(&kind, tokens)
-                        .await
-                        .map_err(|e| match e {
-                            budget_gate::BudgetGateError::Frozen { reason } => {
-                                ExecutorError::BudgetFrozen { reason }
-                            }
-                        })?;
-                }
             }
 
             // ── Phase 2: Execute nodes by critical-path priority ──
@@ -512,13 +484,6 @@ impl<S: WorkflowState> Executor<S> {
                                                 Value::String("vote".into()),
                                             );
                                         }
-                                    } else if task.kind == NodeKind::Sandbox {
-                                        if let Some(obj) = payload.as_object_mut() {
-                                            obj.insert(
-                                                "_node_role".into(),
-                                                Value::String("sandbox".into()),
-                                            );
-                                        }
                                     }
 
                                     if circuit.is_open() {
@@ -597,130 +562,6 @@ impl<S: WorkflowState> Executor<S> {
                                             ))
                                             .await;
                                         }
-                                    }
-                                }
-                            }
-                            NodeKind::MuscleExec => {
-                                let command = task
-                                    .payload
-                                    .get("_muscle_command")
-                                    .and_then(Value::as_str)
-                                    .ok_or_else(|| ExecutorError::CommandFailed {
-                                        reason: "payload has no _muscle_command".into(),
-                                    })?;
-                                let cwd = std::env::current_dir().ok();
-                                let output = crate::muscle_exec::run(command, cwd.as_deref())
-                                    .await
-                                    .map_err(|reason| ExecutorError::CommandFailed { reason })?;
-                                if output.exit_code != 0 {
-                                    return Err(ExecutorError::CommandFailed {
-                                        reason: format!("exit code {}", output.exit_code),
-                                    });
-                                }
-                                let mut p = task.payload.clone();
-                                if let Some(obj) = p.as_object_mut() {
-                                    obj.insert("_muscle_stdout".into(), Value::String(output.stdout));
-                                    obj.insert("_muscle_exit_code".into(), Value::from(output.exit_code));
-                                }
-                                p
-                            }
-                            NodeKind::Sandbox => {
-                                let cmd = task
-                                    .payload
-                                    .get("_sandbox_command")
-                                    .and_then(Value::as_str)
-                                    .unwrap_or("echo 'no command provided'");
-                                let image = task
-                                    .sandbox_config
-                                    .as_ref()
-                                    .map(|c| c.image.clone())
-                                    .unwrap_or_else(|| "ubuntu:24.04".into());
-                                let duration =
-                                    std::time::Duration::from_secs(task.timeout_secs);
-                                let workdir = std::env::current_dir().ok();
-                                const DEFAULT_MEM_MB: u32 = 256;
-                                const DEFAULT_CPU: f32 = 1.0;
-                                let sandbox_result = {
-                                    #[cfg(feature = "nats")]
-                                    {
-                                        let jetstream_result = if crate::nats_bus::default_nats_url()
-                                            .is_some()
-                                        {
-                                            crate::async_sandbox::run_sandbox_via_jetstream(
-                                                "",
-                                                cmd,
-                                                workdir.as_deref(),
-                                                duration,
-                                                Some(DEFAULT_MEM_MB),
-                                                Some(DEFAULT_CPU),
-                                                Some("subprocess"),
-                                            )
-                                            .await
-                                        } else {
-                                            Err("NATS not configured".to_string())
-                                        };
-                                        match jetstream_result {
-                                            Ok(result) => Ok(result),
-                                            Err(err) => {
-                                                tracing::warn!(
-                                                    error = %err,
-                                                    "JetStream sandbox unavailable; running in Docker"
-                                                );
-                                                crate::sandbox::run_sandbox_hardened(
-                                                    cmd,
-                                                    &image,
-                                                    duration,
-                                                    workdir.as_deref(),
-                                                    DEFAULT_MEM_MB,
-                                                    DEFAULT_CPU,
-                                                )
-                                                .await
-                                            }
-                                        }
-                                    }
-                                    #[cfg(not(feature = "nats"))]
-                                    {
-                                        crate::sandbox::run_sandbox_hardened(
-                                            cmd,
-                                            &image,
-                                            duration,
-                                            workdir.as_deref(),
-                                            DEFAULT_MEM_MB,
-                                            DEFAULT_CPU,
-                                        )
-                                        .await
-                                    }
-                                };
-                                match sandbox_result {
-                                    Ok(result) => {
-                                        let mut p = task.payload.clone();
-                                        if let Some(obj) = p.as_object_mut() {
-                                            obj.insert(
-                                                "_sandbox_stdout".into(),
-                                                Value::String(result.stdout),
-                                            );
-                                            obj.insert(
-                                                "_sandbox_stderr".into(),
-                                                Value::String(result.stderr),
-                                            );
-                                            obj.insert(
-                                                "_sandbox_exit_code".into(),
-                                                Value::Number(
-                                                    serde_json::Number::from(result.exit_code),
-                                                ),
-                                            );
-                                        }
-                                        p
-                                    }
-                                    Err(e) => {
-                                        let mut p = task.payload.clone();
-                                        if let Some(obj) = p.as_object_mut() {
-                                            obj.insert(
-                                                "_sandbox_error".into(),
-                                                Value::String(e),
-                                            );
-                                        }
-                                        p
                                     }
                                 }
                             }
@@ -925,18 +766,6 @@ impl<S: WorkflowState> Executor<S> {
                     .transition(transition, final_payload)
                     .map_err(|_| ExecutorError::InvalidTransition)?;
 
-                let final_payload_for_trace = current_snapshot.payload().clone();
-                let success = !is_failure_payload(&final_payload_for_trace);
-                crate::execution_trace::spawn_publish(
-                    crate::execution_trace::ExecutionTraceEvent::from_payloads(
-                        &exec_id_str,
-                        &workflow_name,
-                        &initial_payload_for_trace,
-                        &final_payload_for_trace,
-                        success,
-                    ),
-                );
-
                 self.prepare_and_append_snapshot(&self.state_store, current_snapshot)?;
 
                 self.log_trajectory(&exec_id_str, "complete", "success", None, None, None, None);
@@ -967,7 +796,6 @@ struct NodeTask {
     timeout_secs: u64,
     description: Option<String>,
     escalation_model: Option<String>,
-    sandbox_config: Option<crate::workflow::SandboxConfig>,
     payload: Value,
 }
 
@@ -993,8 +821,6 @@ pub enum ExecutorError {
     Cancelled,
     #[error("payload too large: {size} bytes (max {max})")]
     PayloadTooLarge { size: usize, max: usize },
-    #[error("token budget frozen: {reason}")]
-    BudgetFrozen { reason: String },
     #[error("command node failed: {reason}")]
     CommandFailed { reason: String },
 }

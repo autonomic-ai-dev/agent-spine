@@ -13,9 +13,6 @@ cargo clippy -p agent-spine -- -D warnings
 echo "==> Checking cargo check..."
 cargo check -p agent-spine
 
-echo "==> Running Playbook: Budget Preconditions..."
-"$DIR/playbooks/verify_budget_preconditions.sh"
-
 echo "==> Running Playbook: Workflow Engine..."
 "$DIR/playbooks/verify_workflow_engine.sh"
 

@@ -38,7 +38,7 @@ enum Command {
     Doctor,
     /// Display daemon logs
     Log {
-        /// Daemon name (e.g. spine, nerves, heart) or "all"
+        /// Daemon name (e.g. spine) or "all"
         name: Option<String>,
         /// Follow log output (tail -f)
         #[arg(short, long)]
@@ -159,7 +159,7 @@ enum EventCommand {
     },
     /// Publish an event to the bus.
     Pub {
-        /// Event subject (e.g. "agent.heart.beat").
+        /// Event subject (e.g. "agent.spine.state").
         subject: String,
         /// Event payload as JSON string.
         payload: String,
@@ -172,7 +172,7 @@ enum EventCommand {
     },
     /// Subscribe to events from the bus (prints to stdout as JSON).
     Sub {
-        /// Subject filter (e.g. "agent.heart.>" for wildcard).
+        /// Subject filter (e.g. "agent.spine.>" for wildcard).
         #[arg(short, long, default_value = ">")]
         subject: String,
         /// Event bus URL (default: http://localhost:3100).

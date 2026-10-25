@@ -19,49 +19,10 @@ pub struct WorkflowDefinition {
     /// If set, the binary checks at parse/validate time and warns on mismatch.
     #[serde(default)]
     min_spine_version: Option<String>,
-    /// Optional workflow-level budget governance config.
-    #[serde(default)]
-    budget: Option<WorkflowBudgetConfig>,
     #[serde(default)]
     nodes: Vec<WorkflowNode>,
     #[serde(default)]
     edges: Vec<WorkflowEdge>,
-}
-
-/// Configuration for workflow-level budget ceilings and breach actions.
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub struct WorkflowBudgetConfig {
-    #[serde(default)]
-    pub max_workflow_cost_usd: Option<f64>,
-    #[serde(default = "default_on_budget_exceeded")]
-    pub on_budget_exceeded: String,
-}
-
-fn default_on_budget_exceeded() -> String {
-    "abort".into()
-}
-
-impl Default for WorkflowBudgetConfig {
-    fn default() -> Self {
-        Self {
-            max_workflow_cost_usd: None,
-            on_budget_exceeded: default_on_budget_exceeded(),
-        }
-    }
-}
-
-/// Precondition checked before a node is dispatched.
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub struct StepPrecondition {
-    pub check: String,
-    #[serde(default)]
-    pub min_remaining_usd: Option<f64>,
-    #[serde(default)]
-    pub provider: Option<String>,
-    #[serde(default)]
-    pub window: Option<String>,
-    #[serde(default)]
-    pub max_utilization_pct: Option<f64>,
 }
 
 impl WorkflowDefinition {
@@ -79,7 +40,6 @@ impl WorkflowDefinition {
             version,
             start_node: start_node.into(),
             min_spine_version: None,
-            budget: None,
             nodes,
             edges,
         }
@@ -96,19 +56,6 @@ impl WorkflowDefinition {
     #[must_use]
     pub fn min_spine_version(&self) -> Option<&str> {
         self.min_spine_version.as_deref()
-    }
-
-    /// Return the workflow budget configuration, if set.
-    #[must_use]
-    pub fn budget(&self) -> Option<&WorkflowBudgetConfig> {
-        self.budget.as_ref()
-    }
-
-    /// Set the workflow budget configuration.
-    #[must_use]
-    pub fn with_budget(mut self, budget: WorkflowBudgetConfig) -> Self {
-        self.budget = Some(budget);
-        self
     }
 
     /// Load and parse a workflow definition from a YAML file.
@@ -137,16 +84,6 @@ impl WorkflowDefinition {
             return Err(WorkflowValidationError::InvalidVersion { version: 0 });
         }
 
-        if let Some(ref b) = self.budget {
-            if let Some(max_cost) = b.max_workflow_cost_usd {
-                if max_cost < 0.0 {
-                    return Err(WorkflowValidationError::InvalidBudget {
-                        detail: "max_workflow_cost_usd must be non-negative".to_owned(),
-                    });
-                }
-            }
-        }
-
         if let Some(ref min_ver) = self.min_spine_version {
             check_spine_version(min_ver)?;
         }
@@ -160,31 +97,6 @@ impl WorkflowDefinition {
             let name = node.name.trim();
             if name.is_empty() {
                 return Err(WorkflowValidationError::EmptyNodeName { index });
-            }
-
-            for (p_idx, pre) in node.preconditions.iter().enumerate() {
-                if pre.check.trim().is_empty() {
-                    return Err(WorkflowValidationError::InvalidPrecondition {
-                        node: name.to_owned(),
-                        detail: format!("precondition #{p_idx} check must not be empty"),
-                    });
-                }
-                if let Some(min_usd) = pre.min_remaining_usd {
-                    if min_usd < 0.0 {
-                        return Err(WorkflowValidationError::InvalidPrecondition {
-                            node: name.to_owned(),
-                            detail: "min_remaining_usd must be non-negative".to_owned(),
-                        });
-                    }
-                }
-                if let Some(util) = pre.max_utilization_pct {
-                    if !(0.0..=100.0).contains(&util) {
-                        return Err(WorkflowValidationError::InvalidPrecondition {
-                            node: name.to_owned(),
-                            detail: "max_utilization_pct must be between 0.0 and 100.0".to_owned(),
-                        });
-                    }
-                }
             }
 
             if let Some(ref rp) = node.retry_policy {
@@ -361,33 +273,6 @@ impl Default for VoteConfig {
     }
 }
 
-/// Configuration for a Sandbox node — runs code in an isolated environment.
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub struct SandboxConfig {
-    /// Docker image to use for the sandbox.
-    #[serde(default = "default_sandbox_image")]
-    pub image: String,
-    /// Timeout in seconds for sandbox execution.
-    #[serde(default = "default_sandbox_timeout")]
-    pub timeout_secs: u64,
-}
-
-fn default_sandbox_image() -> String {
-    "ubuntu:24.04".into()
-}
-fn default_sandbox_timeout() -> u64 {
-    60
-}
-
-impl Default for SandboxConfig {
-    fn default() -> Self {
-        Self {
-            image: "ubuntu:24.04".into(),
-            timeout_secs: 60,
-        }
-    }
-}
-
 /// A node in the declarative workflow graph.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct WorkflowNode {
@@ -407,15 +292,9 @@ pub struct WorkflowNode {
     /// Vote node configuration (only meaningful for Vote kind).
     #[serde(default)]
     vote_config: Option<VoteConfig>,
-    /// Sandbox node configuration (only meaningful for Sandbox kind).
-    #[serde(default)]
-    sandbox_config: Option<SandboxConfig>,
     /// Per-node execution timeout in seconds (`timeout_s` alias supported in YAML).
     #[serde(default, alias = "timeout_s")]
     timeout_secs: Option<u64>,
-    /// Step preconditions (budget headroom, quota available) before dispatch.
-    #[serde(default)]
-    preconditions: Vec<StepPrecondition>,
 }
 
 impl WorkflowNode {
@@ -460,9 +339,7 @@ impl WorkflowNode {
             escalation_model: None,
             debate_config: Some(DebateConfig::default()),
             vote_config: None,
-            sandbox_config: None,
             timeout_secs: None,
-            preconditions: Vec::new(),
         }
     }
 
@@ -477,26 +354,7 @@ impl WorkflowNode {
             escalation_model: None,
             debate_config: None,
             vote_config: Some(VoteConfig::default()),
-            sandbox_config: None,
             timeout_secs: None,
-            preconditions: Vec::new(),
-        }
-    }
-
-    /// Create a sandbox node — runs in isolated Docker environment.
-    #[must_use]
-    pub fn sandbox(name: impl Into<String>) -> Self {
-        Self {
-            name: name.into(),
-            kind: NodeKind::Sandbox,
-            description: None,
-            retry_policy: None,
-            escalation_model: None,
-            debate_config: None,
-            vote_config: None,
-            sandbox_config: Some(SandboxConfig::default()),
-            timeout_secs: None,
-            preconditions: Vec::new(),
         }
     }
 
@@ -517,23 +375,8 @@ impl WorkflowNode {
             escalation_model: None,
             debate_config: None,
             vote_config: None,
-            sandbox_config: None,
             timeout_secs: None,
-            preconditions: Vec::new(),
         }
-    }
-
-    /// Attach preconditions to the node.
-    #[must_use]
-    pub fn with_preconditions(mut self, preconditions: Vec<StepPrecondition>) -> Self {
-        self.preconditions = preconditions;
-        self
-    }
-
-    /// Return the node's preconditions.
-    #[must_use]
-    pub fn preconditions(&self) -> &[StepPrecondition] {
-        &self.preconditions
     }
 
     /// Attach a human-readable description to the node.
@@ -554,13 +397,6 @@ impl WorkflowNode {
     pub fn timeout_secs(&self) -> u64 {
         if let Some(t) = self.timeout_secs {
             return t;
-        }
-        if self.kind == NodeKind::Sandbox {
-            return self
-                .sandbox_config
-                .as_ref()
-                .map(|c| c.timeout_secs)
-                .unwrap_or(60);
         }
         DEFAULT_NODE_TIMEOUT_SECS
     }
@@ -600,12 +436,6 @@ impl WorkflowNode {
     pub fn vote_config(&self) -> Option<&VoteConfig> {
         self.vote_config.as_ref()
     }
-
-    /// Return the sandbox config (only meaningful for Sandbox nodes).
-    #[must_use]
-    pub fn sandbox_config(&self) -> Option<&SandboxConfig> {
-        self.sandbox_config.as_ref()
-    }
 }
 
 /// The role a node plays in the workflow.
@@ -632,12 +462,6 @@ pub enum NodeKind {
     /// Runs the same prompt N times with temperature > 0 for diversity.
     /// Selects the best output by majority vote or lowest validation error.
     Vote,
-    /// Spins up an ephemeral sandbox (Docker container) where the agent
-    /// writes and executes scratchpad scripts to verify behavior.
-    Sandbox,
-    /// Runs the shell command in payload `_muscle_command` through agent-muscle,
-    /// so the AST guard and the command timeout apply.
-    MuscleExec,
     /// Gathers static context from the environment (git diff, test output,
     /// lint results, file contents) and injects raw data into the payload
     /// before the agent executes.
@@ -656,8 +480,6 @@ impl std::fmt::Display for NodeKind {
             Self::Router => write!(f, "router"),
             Self::Debate => write!(f, "debate"),
             Self::Vote => write!(f, "vote"),
-            Self::Sandbox => write!(f, "sandbox"),
-            Self::MuscleExec => write!(f, "muscle_exec"),
             Self::Hydrate => write!(f, "hydrate"),
         }
     }
@@ -725,10 +547,6 @@ pub enum WorkflowValidationError {
     EmptyWorkflowName,
     #[error("invalid retry policy for node '{node}': {detail}")]
     InvalidRetryPolicy { node: String, detail: String },
-    #[error("invalid workflow budget configuration: {detail}")]
-    InvalidBudget { detail: String },
-    #[error("invalid precondition in node '{node}': {detail}")]
-    InvalidPrecondition { node: String, detail: String },
     #[error("workflow version must be greater than zero")]
     InvalidVersion { version: u32 },
     #[error("workflow must declare at least one node")]
@@ -785,90 +603,4 @@ fn check_spine_version(required: &str) -> Result<(), WorkflowValidationError> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn parse_workflow_with_budget_and_preconditions() {
-        let yaml = r#"
-name: autonomous-feature-development
-version: 1
-start_node: architecture-planning
-budget:
-  max_workflow_cost_usd: 15.00
-  on_budget_exceeded: request_approval
-nodes:
-  - name: architecture-planning
-    kind: agent
-    preconditions:
-      - check: budget_headroom
-        min_remaining_usd: 5.00
-      - check: quota_available
-        provider: anthropic
-        window: 5h_rolling
-        max_utilization_pct: 85.0
-edges: []
-"#;
-
-        let wf = WorkflowDefinition::from_yaml(yaml).expect("should parse valid YAML");
-        assert_eq!(wf.name, "autonomous-feature-development");
-        let budget = wf.budget().expect("budget should be present");
-        assert_eq!(budget.max_workflow_cost_usd, Some(15.00));
-        assert_eq!(budget.on_budget_exceeded, "request_approval");
-
-        let node = &wf.nodes()[0];
-        assert_eq!(node.preconditions().len(), 2);
-        assert_eq!(node.preconditions()[0].check, "budget_headroom");
-        assert_eq!(node.preconditions()[0].min_remaining_usd, Some(5.00));
-        assert_eq!(node.preconditions()[1].check, "quota_available");
-        assert_eq!(
-            node.preconditions()[1].provider.as_deref(),
-            Some("anthropic")
-        );
-        assert_eq!(node.preconditions()[1].max_utilization_pct, Some(85.0));
-
-        let validated = wf.validate().expect("should validate cleanly");
-        assert_eq!(
-            validated.definition().name,
-            "autonomous-feature-development"
-        );
-    }
-
-    #[test]
-    fn validate_rejects_negative_budget_and_invalid_quota() {
-        let yaml_neg = r#"
-name: test
-version: 1
-start_node: step
-budget:
-  max_workflow_cost_usd: -5.00
-nodes:
-  - name: step
-    kind: agent
-edges: []
-"#;
-        let err = WorkflowDefinition::from_yaml(yaml_neg)
-            .unwrap()
-            .validate()
-            .unwrap_err();
-        assert!(matches!(err, WorkflowValidationError::InvalidBudget { .. }));
-
-        let yaml_bad_quota = r#"
-name: test
-version: 1
-start_node: step
-nodes:
-  - name: step
-    kind: agent
-    preconditions:
-      - check: quota_available
-        max_utilization_pct: 150.0
-edges: []
-"#;
-        let err = WorkflowDefinition::from_yaml(yaml_bad_quota)
-            .unwrap()
-            .validate()
-            .unwrap_err();
-        assert!(matches!(
-            err,
-            WorkflowValidationError::InvalidPrecondition { .. }
-        ));
-    }
 }

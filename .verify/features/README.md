@@ -3,7 +3,6 @@
 ## Baseline preconditions
 
 - Rust toolchain matching `Cargo.lock`. `protoc` and `bun` are needed for the dashboard, as `agent-spine doctor` reports.
-- The budget-gate check needs agent-heart on port 3101 when an LLM node runs.
 - gRPC and dashboard checks need `agent-spine serve` on port 3100.
 
 ## Driving conventions

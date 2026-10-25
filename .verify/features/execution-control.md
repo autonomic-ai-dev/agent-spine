@@ -18,7 +18,7 @@ Summary: agent-spine controls how a workflow run stops, repeats, and recovers. I
   - Outcome: Pending tasks appear in the supervisor's state. Not verified by a test in this pass.
 - `state-bridge-to-nats`: Publishes supervisor state to NATS.
   - Behaviour: `spawn_state_bridge` (`src/jetstream_bridge.rs` line 95) takes the supervisor and the NATS URL. `jetstream_bridge.rs` has 2 inline tests.
-  - Outcome: Events reach the bus that agent-tui and agent-ui read. Not verified against a live broker in this pass.
+  - Outcome: Events reach the bus that external dashboards read. Not verified against a live broker in this pass.
 - `wake-brain-on-call`: Starts agent-brain when a call needs it and it is not running.
   - Behaviour: `try_spawn_brain` (`src/wake_on_call.rs` line 48) starts the process. `wait_for_brain` (line 65) polls up to `max_attempts`.
   - Outcome: `true` when brain answers, `false` after the attempts run out. No test exists for this module.
