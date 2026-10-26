@@ -41,10 +41,21 @@ fn registry_workflow_yaml(alias: &str) -> Option<(String, String)> {
 }
 
 fn brain_home() -> PathBuf {
-    std::env::var("AGENT_BRAIN_HOME")
-        .map(PathBuf::from)
-        .or_else(|_| dirs::home_dir().map(|h| h.join(".agent_brain")).ok_or(()))
-        .unwrap_or_else(|_| PathBuf::from(".agent_brain"))
+    if let Ok(val) = std::env::var("AGENT_BRAIN_HOME") {
+        return PathBuf::from(val);
+    }
+    if let Some(h) = dirs::home_dir() {
+        let autonomic = h.join(".autonomic").join("memory");
+        if autonomic.join("registry-cache").join("workflows.json").exists() {
+            return autonomic;
+        }
+        let legacy = h.join(".agent_brain");
+        if legacy.join("registry-cache").join("workflows.json").exists() {
+            return legacy;
+        }
+        return autonomic;
+    }
+    PathBuf::from(".autonomic/memory")
 }
 
 fn read_registry_file(home: &Path, name: &str) -> Option<String> {
