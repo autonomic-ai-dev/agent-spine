@@ -418,10 +418,14 @@ async fn test_verify_node_active_command_execution() {
     });
 
     wait_for_pending(&supervisor, &["start"]).await;
-    supervisor.resume("start", json!({ "ready": true })).unwrap();
+    supervisor
+        .resume("start", json!({ "ready": true }))
+        .unwrap();
 
     wait_for_pending(&supervisor, &["finish"]).await;
-    supervisor.resume("finish", json!({ "done": true })).unwrap();
+    supervisor
+        .resume("finish", json!({ "done": true }))
+        .unwrap();
 
     let res = exec_task.await.unwrap();
     assert!(res.is_ok());
@@ -472,7 +476,9 @@ async fn test_verify_node_failing_command_with_continue_on_failure() {
         .unwrap();
 
     wait_for_pending(&supervisor, &["finish"]).await;
-    supervisor.resume("finish", json!({ "done": true })).unwrap();
+    supervisor
+        .resume("finish", json!({ "done": true }))
+        .unwrap();
 
     let res = exec_task.await.unwrap();
     assert!(res.is_ok());
@@ -512,10 +518,14 @@ async fn test_speculative_fork_node_execution() {
     });
 
     wait_for_pending(&supervisor, &["start"]).await;
-    supervisor.resume("start", json!({ "prepared": true })).unwrap();
+    supervisor
+        .resume("start", json!({ "prepared": true }))
+        .unwrap();
 
     wait_for_pending(&supervisor, &["end"]).await;
-    supervisor.resume("end", json!({ "finished": true })).unwrap();
+    supervisor
+        .resume("end", json!({ "finished": true }))
+        .unwrap();
 
     let res = exec_task.await.unwrap();
     assert!(res.is_ok());

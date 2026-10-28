@@ -10,7 +10,8 @@ pub struct SpeculativeWorktreeGuard {
 impl SpeculativeWorktreeGuard {
     pub async fn create(repo_root: impl AsRef<Path>, branch_prefix: &str) -> Result<Self, String> {
         let repo_root = repo_root.as_ref().to_path_buf();
-        let unique_id = uuid::Uuid::new_v7(uuid::Timestamp::now(uuid::NoContext)).to_string()[..8].to_string();
+        let unique_id =
+            uuid::Uuid::new_v7(uuid::Timestamp::now(uuid::NoContext)).to_string()[..8].to_string();
         let branch_name = format!("{branch_prefix}-{unique_id}");
         let worktree_path = std::env::temp_dir().join(format!("spine-worktree-{unique_id}"));
 

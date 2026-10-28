@@ -55,6 +55,18 @@
 
   let replayStatus: string | null = null;
 
+  async function resumeTask(nodeName: string, approved: boolean) {
+    try {
+      await supervisorClient.resumeExecution({
+        nodeName,
+        payloadJson: JSON.stringify({ approved })
+      });
+      fetchPending();
+    } catch (e) {
+      console.error('Failed to resume task', e);
+    }
+  }
+
   async function replayFromSnapshot(sequence: number) {
     if (!selectedExecutionId) return;
     replayStatus = `Triggering time-travel replay from sequence #${sequence}...`;

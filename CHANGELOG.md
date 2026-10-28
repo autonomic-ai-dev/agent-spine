@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0-rc3] - 2026-10-28
+
+### Added
+- **Active Verify Node Command Execution**: `NodeKind::Verify` executes shell validation commands asynchronously under timeout, capturing stdout, stderr, and exit code, and failing the step if exit code is non-zero (unless `continue_on_failure: true`).
+- **Cognitive Knapsack Injection**: Automatically injects surgical ~500-token `_brain_knapsack` from `agent-brain route_task` into `Agent` node payloads before supervisor delegation.
+- **Zero-Daemon Local DLQ Fallback**: Persists dead-letter queue entries to `~/.autonomic/state/spine/dlq.jsonl` when an external NATS broker is unavailable or disabled.
+- **Procedure Graph Bi-Directional Transition Sync**: Automatically syncs workflow DAG edge transitions into `agent-brain`'s Schema v23 procedure graph (`procedure_edges`) via `store_trajectory`.
+- **Speculative Worktree Branching**: Added `NodeKind::SpeculativeFork` and `SpeculativeWorktreeGuard` for isolated multi-branch speculative execution in temporary git worktrees.
+- **Dashboard Time-Travel Debugger & Replay**: Enhanced Svelte dashboard with verification status badges, command tag display, and 1-click sequence replay.
+
+### Fixed
+- Restored `resumeTask` handler in dashboard Action Center.
+- Formatted test suites cleanly to satisfy strict CI linter rules.
+
 ## [1.0.0-rc2] - 2026-10-26
 
 ### Changed

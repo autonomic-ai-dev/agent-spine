@@ -83,7 +83,10 @@ pub async fn publish_dlq(entry: &DlqEntry) -> Result<(), String> {
                 entry.node_name.replace(' ', "_")
             );
             if let Ok(bytes) = serde_json::to_vec(entry) {
-                if crate::jetstream::publish_dedup(&js, subjects::SYSTEM_DLQ, &msg_id, &bytes).await.is_ok() {
+                if crate::jetstream::publish_dedup(&js, subjects::SYSTEM_DLQ, &msg_id, &bytes)
+                    .await
+                    .is_ok()
+                {
                     return Ok(());
                 }
             }

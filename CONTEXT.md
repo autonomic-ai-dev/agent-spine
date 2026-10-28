@@ -1,7 +1,7 @@
 # agent-spine — Deep Operational & Architectural Context for Agents
 
 > **Deterministic Workflow DAG Engine & State Machine** — In-depth architectural guide, execution lifecycle, node taxonomy, complete CLI matrix, MCP tool contracts, and failure recovery runbooks for `agent-spine`.  
-> **Ecosystem Version Baseline:** `v1.0.0-beta.3.2`  
+> **Ecosystem Version Baseline:** `v1.0.0-rc3`  
 > **Documentation Hub:** [https://autonomic-ai.dev/docs/workflows](https://autonomic-ai.dev/docs/workflows) · [Architecture Hub](https://autonomic-ai.dev/docs/architecture)  
 > **Ports:** HTTP API `:3001` · Event Bus / Relay `:3100`  
 > **Default Workspace & State:** `~/.autonomic/workflows/` · `~/.autonomic/state/spine/state.db`
