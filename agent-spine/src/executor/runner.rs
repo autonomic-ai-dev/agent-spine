@@ -233,6 +233,14 @@ impl<S: WorkflowState> Executor<S> {
                 }
             }
 
+            if let Some(knapsack) =
+                brain.get_knapsack_for_node(node_kind, node_name, description, node_payload)
+            {
+                if let Some(obj) = node_payload.as_object_mut() {
+                    obj.insert("_brain_knapsack".into(), knapsack);
+                }
+            }
+
             // Also store provenance (existing behavior)
             if let Some(provenance) =
                 brain.get_provenance(node_name, node_kind, description, node_payload)
@@ -366,6 +374,7 @@ impl<S: WorkflowState> Executor<S> {
                         | NodeKind::Debate
                         | NodeKind::Vote
                         | NodeKind::Hydrate
+                        | NodeKind::SpeculativeFork
                 ) {
                     let node_kind_str = node.kind().to_string();
                     self.enrich_from_brain(node_name, &node_kind_str, &mut node_payload);
@@ -374,6 +383,7 @@ impl<S: WorkflowState> Executor<S> {
                 node_tasks.push(NodeTask {
                     name: node_name.clone(),
                     kind: node.kind().clone(),
+                    command: node.command().map(String::from),
                     retry_policy: node.retry_policy(),
                     timeout_secs: node.timeout_secs(),
                     description: node.description().map(String::from),
@@ -564,48 +574,104 @@ impl<S: WorkflowState> Executor<S> {
                                     }
                                 }
                             }
-                            NodeKind::Fork | NodeKind::Join => task.payload,
+                            NodeKind::Fork | NodeKind::Join | NodeKind::SpeculativeFork => {
+                                task.payload
+                            }
                             NodeKind::Verify => {
                                 let mut payload = task.payload;
-                                let verified = if let Some(state) = payload.get("state") {
-                                    let lint_passed = state
-                                        .get("lint_passed")
-                                        .and_then(Value::as_bool)
-                                        .unwrap_or(true);
-                                    let tests_passed = state
-                                        .get("tests_passed")
-                                        .and_then(Value::as_bool)
-                                        .unwrap_or(true);
-                                    let exit_code = state
-                                        .get("exit_code")
-                                        .and_then(Value::as_i64)
-                                        .unwrap_or(0);
-                                    let has_failures = state
-                                        .get("has_failures")
-                                        .and_then(Value::as_bool)
-                                        .unwrap_or(false);
-                                    let explicit_verified =
-                                        state.get("verified").and_then(Value::as_bool);
+                                let command_opt = task.command.as_deref().or_else(|| {
+                                    payload.get("command").and_then(Value::as_str)
+                                });
 
-                                    if let Some(ev) = explicit_verified {
-                                        ev && lint_passed
-                                            && tests_passed
-                                            && exit_code == 0
-                                            && !has_failures
+                                let (verified, exit_code, stdout, stderr) =
+                                    if let Some(cmd) = command_opt {
+                                        let timeout =
+                                            std::time::Duration::from_secs(task.timeout_secs);
+                                        let run_res = tokio::time::timeout(timeout, async {
+                                            let mut child = tokio::process::Command::new("sh");
+                                            child.arg("-c").arg(cmd);
+                                            child.output().await
+                                        })
+                                        .await;
+
+                                        match run_res {
+                                            Ok(Ok(output)) => {
+                                                let code = output.status.code().unwrap_or(-1);
+                                                let out_str =
+                                                    String::from_utf8_lossy(&output.stdout)
+                                                        .to_string();
+                                                let err_str =
+                                                    String::from_utf8_lossy(&output.stderr)
+                                                        .to_string();
+                                                (code == 0, code as i64, out_str, err_str)
+                                            }
+                                            Ok(Err(e)) => (
+                                                false,
+                                                -1,
+                                                String::new(),
+                                                format!("execution error: {e}"),
+                                            ),
+                                            Err(_) => (
+                                                false,
+                                                -1,
+                                                String::new(),
+                                                "timeout executing verification command"
+                                                    .to_string(),
+                                            ),
+                                        }
+                                    } else if let Some(state) = payload.get("state") {
+                                        let lint_passed = state
+                                            .get("lint_passed")
+                                            .and_then(Value::as_bool)
+                                            .unwrap_or(true);
+                                        let tests_passed = state
+                                            .get("tests_passed")
+                                            .and_then(Value::as_bool)
+                                            .unwrap_or(true);
+                                        let exit_code = state
+                                            .get("exit_code")
+                                            .and_then(Value::as_i64)
+                                            .unwrap_or(0);
+                                        let has_failures = state
+                                            .get("has_failures")
+                                            .and_then(Value::as_bool)
+                                            .unwrap_or(false);
+                                        let explicit_verified =
+                                            state.get("verified").and_then(Value::as_bool);
+
+                                        let v = if let Some(ev) = explicit_verified {
+                                            ev && lint_passed
+                                                && tests_passed
+                                                && exit_code == 0
+                                                && !has_failures
+                                        } else {
+                                            lint_passed
+                                                && tests_passed
+                                                && exit_code == 0
+                                                && !has_failures
+                                        };
+                                        (v, exit_code, String::new(), String::new())
                                     } else {
-                                        lint_passed
-                                            && tests_passed
-                                            && exit_code == 0
-                                            && !has_failures
-                                    }
-                                } else {
-                                    true
-                                };
+                                        (true, 0, String::new(), String::new())
+                                    };
 
                                 if let Some(state_obj) =
                                     payload.get_mut("state").and_then(Value::as_object_mut)
                                 {
                                     state_obj.insert("verified".into(), Value::Bool(verified));
+                                    state_obj.insert(
+                                        "exit_code".into(),
+                                        Value::Number(serde_json::Number::from(exit_code)),
+                                    );
+                                    if !stdout.is_empty() {
+                                        state_obj.insert("stdout".into(), Value::String(stdout));
+                                    }
+                                    if !stderr.is_empty() {
+                                        state_obj.insert(
+                                            "stderr".into(),
+                                            Value::String(stderr.clone()),
+                                        );
+                                    }
                                     state_obj.insert(
                                         "verified_at".into(),
                                         Value::String(chrono::Utc::now().to_rfc3339()),
@@ -613,6 +679,19 @@ impl<S: WorkflowState> Executor<S> {
                                 } else if let Some(obj) = payload.as_object_mut() {
                                     let mut state_map = serde_json::Map::new();
                                     state_map.insert("verified".into(), Value::Bool(verified));
+                                    state_map.insert(
+                                        "exit_code".into(),
+                                        Value::Number(serde_json::Number::from(exit_code)),
+                                    );
+                                    if !stdout.is_empty() {
+                                        state_map.insert("stdout".into(), Value::String(stdout));
+                                    }
+                                    if !stderr.is_empty() {
+                                        state_map.insert(
+                                            "stderr".into(),
+                                            Value::String(stderr.clone()),
+                                        );
+                                    }
                                     state_map.insert(
                                         "verified_at".into(),
                                         Value::String(chrono::Utc::now().to_rfc3339()),
@@ -624,6 +703,21 @@ impl<S: WorkflowState> Executor<S> {
                                     verified,
                                     "QualityGate evaluated machine verification status"
                                 );
+                                let continue_on_failure = payload
+                                    .get("continue_on_failure")
+                                    .and_then(Value::as_bool)
+                                    .unwrap_or(false);
+                                if !verified && !continue_on_failure {
+                                    return Err(ExecutorError::CommandFailed {
+                                        reason: if stderr.is_empty() {
+                                            format!(
+                                                "verification failed with exit code {exit_code}"
+                                            )
+                                        } else {
+                                            stderr
+                                        },
+                                    });
+                                }
                                 payload
                             }
                             NodeKind::ApprovalGate => {
@@ -728,6 +822,19 @@ impl<S: WorkflowState> Executor<S> {
                         RouterAction::Continue => {}
                     }
 
+                    if let Some(brain) = self.brain.as_mut() {
+                        let node_kind = nodes
+                            .iter()
+                            .find(|n| n.name() == *node_name)
+                            .map(|n| n.kind().to_string());
+                        brain.sync_procedure_transition(
+                            node_name,
+                            &next_node_name,
+                            node_kind.as_deref(),
+                            true,
+                        );
+                    }
+
                     // Join barrier: only schedule Join when all incoming edges complete
                     if let Some(expected) = join_incoming.get(&next_node_name) {
                         let completed = join_completed.entry(next_node_name.clone()).or_insert(0);
@@ -791,6 +898,7 @@ impl<S: WorkflowState> Executor<S> {
 struct NodeTask {
     name: String,
     kind: crate::workflow::NodeKind,
+    command: Option<String>,
     retry_policy: crate::workflow::RetryPolicy,
     timeout_secs: u64,
     description: Option<String>,

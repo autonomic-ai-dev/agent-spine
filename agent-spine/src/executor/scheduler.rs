@@ -12,6 +12,7 @@ pub fn node_weight_us(kind: &NodeKind) -> u64 {
         NodeKind::Router | NodeKind::Checkpoint => 100,
         NodeKind::ApprovalGate => 50_000,
         NodeKind::Fork | NodeKind::Join => 100,
+        NodeKind::SpeculativeFork => 200,
     }
 }
 

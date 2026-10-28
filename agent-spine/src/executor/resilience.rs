@@ -75,24 +75,42 @@ pub struct DlqEntry {
 /// Publish a failed workflow node to `system.dlq` for operator review/replay.
 #[cfg(feature = "nats")]
 pub async fn publish_dlq(entry: &DlqEntry) -> Result<(), String> {
-    let client = crate::nats_bus::connect_nats()
-        .await
-        .map_err(|e| format!("dlq nats connect: {e}"))?;
-    let js = crate::jetstream::ensure_autonomic_stream(&client)
-        .await
-        .map_err(|e| format!("dlq stream ensure: {e}"))?;
-    let msg_id = format!(
-        "dlq-{}-{}",
-        entry.execution_id,
-        entry.node_name.replace(' ', "_")
-    );
-    let bytes = serde_json::to_vec(entry).map_err(|e| format!("dlq serialize: {e}"))?;
-    crate::jetstream::publish_dedup(&js, subjects::SYSTEM_DLQ, &msg_id, &bytes).await
+    if let Ok(client) = crate::nats_bus::connect_nats().await {
+        if let Ok(js) = crate::jetstream::ensure_autonomic_stream(&client).await {
+            let msg_id = format!(
+                "dlq-{}-{}",
+                entry.execution_id,
+                entry.node_name.replace(' ', "_")
+            );
+            if let Ok(bytes) = serde_json::to_vec(entry) {
+                if crate::jetstream::publish_dedup(&js, subjects::SYSTEM_DLQ, &msg_id, &bytes).await.is_ok() {
+                    return Ok(());
+                }
+            }
+        }
+    }
+    persist_local_dlq(entry)
 }
 
 #[cfg(not(feature = "nats"))]
-pub async fn publish_dlq(_entry: &DlqEntry) -> Result<(), String> {
-    Err("NATS feature disabled; DLQ not available".into())
+pub async fn publish_dlq(entry: &DlqEntry) -> Result<(), String> {
+    persist_local_dlq(entry)
+}
+
+fn persist_local_dlq(entry: &DlqEntry) -> Result<(), String> {
+    let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
+    let dlq_dir = std::path::PathBuf::from(home).join(".autonomic/state/spine");
+    let _ = std::fs::create_dir_all(&dlq_dir);
+    let dlq_file = dlq_dir.join("dlq.jsonl");
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&dlq_file)
+        .map_err(|e| e.to_string())?;
+    use std::io::Write;
+    let json = serde_json::to_string(entry).map_err(|e| e.to_string())?;
+    writeln!(file, "{json}").map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 #[cfg(test)]

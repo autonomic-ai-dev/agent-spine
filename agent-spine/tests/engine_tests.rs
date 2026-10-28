@@ -392,3 +392,131 @@ async fn test_fork_join_with_multi_level_branches() {
 
     let _ = exec_task.await.unwrap().unwrap();
 }
+
+#[tokio::test]
+async fn test_verify_node_active_command_execution() {
+    let nodes = vec![
+        WorkflowNode::new("start", NodeKind::Agent),
+        WorkflowNode::verify("run_check").with_command("echo spine_verified_ok"),
+        WorkflowNode::new("finish", NodeKind::Agent),
+    ];
+    let edges = vec![
+        WorkflowEdge::new("start", "run_check"),
+        WorkflowEdge::new("run_check", "finish"),
+    ];
+
+    let def = WorkflowDefinition::new("test_verify_active", 1, "start", nodes, edges);
+    let validated = def.validate().expect("valid workflow");
+
+    let store = Arc::new(Mutex::new(InMemoryStateStore::default()));
+    let supervisor = Supervisor::new();
+    let executor = Executor::new(validated, Arc::clone(&store), supervisor.clone());
+
+    let exec_task = tokio::spawn(async move {
+        let mut exec = executor;
+        exec.run(json!({ "init": true })).await
+    });
+
+    wait_for_pending(&supervisor, &["start"]).await;
+    supervisor.resume("start", json!({ "ready": true })).unwrap();
+
+    wait_for_pending(&supervisor, &["finish"]).await;
+    supervisor.resume("finish", json!({ "done": true })).unwrap();
+
+    let res = exec_task.await.unwrap();
+    assert!(res.is_ok());
+
+    let store_guard = store.lock().unwrap();
+    let history = store_guard.history(res.unwrap());
+    let check_snap = history
+        .iter()
+        .find(|s| s.transition_edge().map(|t| t.from()) == Some("run_check"))
+        .unwrap();
+    assert_eq!(check_snap.payload()["state"]["verified"], true);
+    assert_eq!(check_snap.payload()["state"]["exit_code"], 0);
+    assert!(
+        check_snap.payload()["state"]["stdout"]
+            .as_str()
+            .unwrap()
+            .contains("spine_verified_ok")
+    );
+}
+
+#[tokio::test]
+async fn test_verify_node_failing_command_with_continue_on_failure() {
+    let nodes = vec![
+        WorkflowNode::new("start", NodeKind::Agent),
+        WorkflowNode::verify("failing_check").with_command("sh -c 'exit 42'"),
+        WorkflowNode::new("finish", NodeKind::Agent),
+    ];
+    let edges = vec![
+        WorkflowEdge::new("start", "failing_check"),
+        WorkflowEdge::new("failing_check", "finish"),
+    ];
+
+    let def = WorkflowDefinition::new("test_verify_continue", 1, "start", nodes, edges);
+    let validated = def.validate().expect("valid workflow");
+
+    let store = Arc::new(Mutex::new(InMemoryStateStore::default()));
+    let supervisor = Supervisor::new();
+    let executor = Executor::new(validated, Arc::clone(&store), supervisor.clone());
+
+    let exec_task = tokio::spawn(async move {
+        let mut exec = executor;
+        exec.run(json!({ "continue_on_failure": true })).await
+    });
+
+    wait_for_pending(&supervisor, &["start"]).await;
+    supervisor
+        .resume("start", json!({ "continue_on_failure": true }))
+        .unwrap();
+
+    wait_for_pending(&supervisor, &["finish"]).await;
+    supervisor.resume("finish", json!({ "done": true })).unwrap();
+
+    let res = exec_task.await.unwrap();
+    assert!(res.is_ok());
+
+    let store_guard = store.lock().unwrap();
+    let history = store_guard.history(res.unwrap());
+    let check_snap = history
+        .iter()
+        .find(|s| s.transition_edge().map(|t| t.from()) == Some("failing_check"))
+        .unwrap();
+    assert_eq!(check_snap.payload()["state"]["verified"], false);
+    assert_eq!(check_snap.payload()["state"]["exit_code"], 42);
+}
+
+#[tokio::test]
+async fn test_speculative_fork_node_execution() {
+    let nodes = vec![
+        WorkflowNode::new("start", NodeKind::Agent),
+        WorkflowNode::speculative_fork("spec_fork"),
+        WorkflowNode::new("end", NodeKind::Agent),
+    ];
+    let edges = vec![
+        WorkflowEdge::new("start", "spec_fork"),
+        WorkflowEdge::new("spec_fork", "end"),
+    ];
+
+    let def = WorkflowDefinition::new("test_speculative", 1, "start", nodes, edges);
+    let validated = def.validate().expect("valid workflow");
+
+    let store = Arc::new(Mutex::new(InMemoryStateStore::default()));
+    let supervisor = Supervisor::new();
+    let executor = Executor::new(validated, Arc::clone(&store), supervisor.clone());
+
+    let exec_task = tokio::spawn(async move {
+        let mut exec = executor;
+        exec.run(json!({ "speculative": true })).await
+    });
+
+    wait_for_pending(&supervisor, &["start"]).await;
+    supervisor.resume("start", json!({ "prepared": true })).unwrap();
+
+    wait_for_pending(&supervisor, &["end"]).await;
+    supervisor.resume("end", json!({ "finished": true })).unwrap();
+
+    let res = exec_task.await.unwrap();
+    assert!(res.is_ok());
+}

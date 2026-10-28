@@ -28,6 +28,7 @@ pub mod nats_bus;
 pub mod registry_workflow;
 pub mod router;
 pub mod setup;
+pub mod speculative_branch;
 pub mod speculative_hydrate;
 pub mod state;
 pub mod supervisor;
