@@ -274,6 +274,55 @@ impl BrainRouter {
         self.bridge.is_some()
     }
 
+    pub fn get_knapsack_for_node(
+        &mut self,
+        node_kind: &str,
+        node_name: &str,
+        description: Option<&str>,
+        payload: &Value,
+    ) -> Option<Value> {
+        let resp = self.enrich_payload(node_name, node_kind, description, payload)?;
+        Some(serde_json::json!({
+            "log_id": resp.log_id,
+            "recommended_skills": resp.recommended_skills,
+            "must_apply": resp.must_apply,
+            "applicable_rules": resp.applicable_rules,
+            "tokens_used": resp.tokens_used,
+            "tokens_budget": resp.tokens_budget,
+            "briefing": resp.briefing,
+        }))
+    }
+
+    pub fn sync_procedure_transition(
+        &mut self,
+        from_node: &str,
+        to_node: &str,
+        task_kind: Option<&str>,
+        success: bool,
+    ) {
+        if let Some(bridge) = self.bridge.as_mut()
+            && let Ok(handle) = tokio::runtime::Handle::try_current()
+        {
+            let notes = format!("spine transition: {from_node} -> {to_node}");
+            let _ = handle.block_on(bridge.store_trajectory(
+                &self.workflow_name,
+                from_node,
+                if success {
+                    "transition_success"
+                } else {
+                    "transition_failure"
+                },
+                None,
+                task_kind,
+                Some(&notes),
+                None,
+                None,
+                None,
+                None,
+            ));
+        }
+    }
+
     /// Get context from agent-brain for a specific workflow node.
     pub fn get_context_for_node(
         &mut self,

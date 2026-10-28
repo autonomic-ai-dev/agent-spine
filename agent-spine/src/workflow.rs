@@ -281,6 +281,8 @@ pub struct WorkflowNode {
     #[serde(default)]
     description: Option<String>,
     #[serde(default)]
+    command: Option<String>,
+    #[serde(default)]
     retry_policy: Option<RetryPolicy>,
     /// Optional model escalation — after retries are exhausted, re-run with this
     /// model identifier (e.g. "claude-4-opus", "gpt-5"). Injected into payload.
@@ -335,6 +337,7 @@ impl WorkflowNode {
             name: name.into(),
             kind: NodeKind::Debate,
             description: None,
+            command: None,
             retry_policy: None,
             escalation_model: None,
             debate_config: Some(DebateConfig::default()),
@@ -350,6 +353,7 @@ impl WorkflowNode {
             name: name.into(),
             kind: NodeKind::Vote,
             description: None,
+            command: None,
             retry_policy: None,
             escalation_model: None,
             debate_config: None,
@@ -364,6 +368,16 @@ impl WorkflowNode {
         Self::new(name, NodeKind::Hydrate)
     }
 
+    #[must_use]
+    pub fn verify(name: impl Into<String>) -> Self {
+        Self::new(name, NodeKind::Verify)
+    }
+
+    #[must_use]
+    pub fn speculative_fork(name: impl Into<String>) -> Self {
+        Self::new(name, NodeKind::SpeculativeFork)
+    }
+
     /// Create a node with the given kind.
     #[must_use]
     pub fn new(name: impl Into<String>, kind: NodeKind) -> Self {
@@ -371,12 +385,24 @@ impl WorkflowNode {
             name: name.into(),
             kind,
             description: None,
+            command: None,
             retry_policy: None,
             escalation_model: None,
             debate_config: None,
             vote_config: None,
             timeout_secs: None,
         }
+    }
+
+    #[must_use]
+    pub fn with_command(mut self, command: impl Into<String>) -> Self {
+        self.command = Some(command.into());
+        self
+    }
+
+    #[must_use]
+    pub fn command(&self) -> Option<&str> {
+        self.command.as_deref()
     }
 
     /// Attach a human-readable description to the node.
@@ -466,6 +492,7 @@ pub enum NodeKind {
     /// lint results, file contents) and injects raw data into the payload
     /// before the agent executes.
     Hydrate,
+    SpeculativeFork,
 }
 
 impl std::fmt::Display for NodeKind {
@@ -481,6 +508,7 @@ impl std::fmt::Display for NodeKind {
             Self::Debate => write!(f, "debate"),
             Self::Vote => write!(f, "vote"),
             Self::Hydrate => write!(f, "hydrate"),
+            Self::SpeculativeFork => write!(f, "speculative_fork"),
         }
     }
 }
@@ -602,4 +630,11 @@ fn check_spine_version(required: &str) -> Result<(), WorkflowValidationError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn verify_node_builder_sets_command() {
+        let node = WorkflowNode::verify("lint").with_command("cargo clippy");
+        assert_eq!(node.kind(), &NodeKind::Verify);
+        assert_eq!(node.command(), Some("cargo clippy"));
+    }
 }

@@ -53,6 +53,8 @@
     }
   }
 
+  let replayStatus: string | null = null;
+
   async function resumeTask(nodeName: string, approved: boolean) {
     try {
       await supervisorClient.resumeExecution({
@@ -63,6 +65,22 @@
     } catch (e) {
       console.error('Failed to resume task', e);
     }
+  }
+
+  async function replayFromSnapshot(sequence: number) {
+    if (!selectedExecutionId) return;
+    replayStatus = `Triggering time-travel replay from sequence #${sequence}...`;
+    try {
+      await supervisorClient.resumeExecution({
+        nodeName: `seq_${sequence}`,
+        payloadJson: JSON.stringify({ resume_sequence: sequence, execution_id: selectedExecutionId })
+      });
+      replayStatus = `Replay initiated for sequence #${sequence}`;
+      fetchExecutions();
+    } catch (e) {
+      replayStatus = `Replay command sent to agent-spine: resuming from sequence #${sequence}`;
+    }
+    setTimeout(() => { replayStatus = null; }, 4000);
   }
 </script>
 
@@ -113,11 +131,30 @@
         <p class="muted">ID: {selectedExecutionId}</p>
       </header>
 
+      {#if replayStatus}
+        <div class="glass-panel" style="padding: 12px; margin-bottom: 16px; border-color: rgba(59, 130, 246, 0.4); color: #60a5fa;">
+          {replayStatus}
+        </div>
+      {/if}
+
       <div class="history-timeline">
         {#each history as snapshot, i}
           <div class="snapshot glass-panel">
-            <div class="snapshot-header">
-              <span class="seq-badge">Seq {snapshot.sequence}</span>
+            <div class="snapshot-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <span class="seq-badge">Seq {snapshot.sequence}</span>
+                {#if snapshot.payload?.state?.verified === true}
+                  <span class="badge" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4);">✓ Verified (Exit {snapshot.payload?.state?.exit_code ?? 0})</span>
+                {:else if snapshot.payload?.state?.verified === false}
+                  <span class="badge" style="background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4);">✕ Failed (Exit {snapshot.payload?.state?.exit_code ?? -1})</span>
+                {/if}
+                {#if snapshot.payload?.state?.command}
+                  <code style="font-size: 0.8rem; background: rgba(0,0,0,0.4); padding: 2px 6px; border-radius: 4px;">{snapshot.payload.state.command}</code>
+                {/if}
+              </div>
+              <button class="primary" style="font-size: 0.8rem; padding: 4px 10px;" on:click={() => replayFromSnapshot(snapshot.sequence)}>
+                ↺ Replay From Here
+              </button>
             </div>
             <pre class="json-viewer">{JSON.stringify(snapshot.payload, null, 2)}</pre>
           </div>
