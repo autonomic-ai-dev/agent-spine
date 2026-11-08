@@ -3,8 +3,8 @@
 > **Deterministic Workflow DAG Engine & State Machine** — In-depth architectural guide, execution lifecycle, node taxonomy, complete CLI matrix, MCP tool contracts, and failure recovery runbooks for `agent-spine`.  
 > **Ecosystem Version Baseline:** `v1.0.0-rc3`  
 > **Documentation Hub:** [https://autonomic-ai.dev/docs/workflows](https://autonomic-ai.dev/docs/workflows) · [Architecture Hub](https://autonomic-ai.dev/docs/architecture)  
-> **Ports:** HTTP API `:3001` · Event Bus / Relay `:3100`  
-> **Default Workspace & State:** `~/.autonomic/workflows/` · `~/.autonomic/state/spine/state.db`
+> **Ports:** dashboard API `:3000` · dashboard `:3001` · event bus `:3100`  
+> **Default Workspace & State:** `~/.autonomic/state/spine` (workflows) · `~/.autonomic/logs/spine/state.db` (run state)
 
 ---
 
@@ -20,7 +20,7 @@ Most AI coding agents fail because they rely on unconstrained, probabilistic pro
 `agent-spine` replaces ad-hoc prompt improvisation with **version-controlled, declarative Directed Acyclic Graphs (DAGs)** written in YAML:
 - The graph dictates the control flow, concurrency, checkpoints, and gates.
 - The LLM acts strictly as a bounded worker executing isolated tasks *within* designated nodes.
-- Every state change is immutably snapshotted to SQLite or JSONL, enabling **time-travel debugging and replayable branches**.
+- Every state change is appended as a snapshot in SQLite, so a finished run can be inspected and replayed with `agent-spine replay`.
 
 ---
 
@@ -66,9 +66,8 @@ flowchart TD
 ### 2.1 The Four First-Class Node Kinds (`NodeKind`)
 
 1. **`Agent`**: Represents an isolated cognitive subtask. The step defines input variables, expected output keys, and optional prompt instructions. The executor hydrates required context via `BrainRouter` (querying `agent-brain`), runs the subtask, and collects outputs.
-2. **`Checkpoint`**: An explicit synchronization barrier that captures an immutable state snapshot (`Snapshot`). Contains monotonic step index, timestamp, parent snapshot hash, and full environment state.
-3. **`Verify`**: Executes an allowlisted validation command (e.g. `cargo check`, `npm test`, `pytest`). Must return exit code 0 to transition to subsequent nodes. Connects with `agent-brain verify` to attribute outcomes.
-4. **`ApprovalGate`**: A Human-in-the-Loop (HITL) safety barrier. When the execution reaches this node, the `tokio` worker suspends execution, enters the `PendingApproval` state, and emits events on the NATS bus when one is configured. Execution remains blocked until an authenticated operator submits `agent-spine approve` or the MCP `spine_approve_step` tool is called.
+2. **`Checkpoint`**: An explicit synchronization barrier that captures an immutable state snapshot (`Snapshot`) of the workflow state at that point.
+3. **`Verify`**: Executes an allowlisted validation command (e.g. `cargo check`, `npm test`, `pytest`). Must return exit code 0 to transition to subsequent nodes.4. **`ApprovalGate`**: A Human-in-the-Loop (HITL) safety barrier. When the execution reaches this node, the `tokio` worker suspends execution, enters the `PendingApproval` state, and emits events on the NATS bus when one is configured. A gate auto-approves unless auto-approval is turned off. When it is off, the node waits until its payload carries `approved: true`. No CLI command sets that flag.
 
 ---
 
@@ -92,8 +91,8 @@ If `max_attempts` is exceeded, the node halts, records failure diagnostics, and 
 
 ### 3.3 Immutable State Snapshots (Time-Travel Debugging)
 Every successful node transition creates an append-only entry in `state.db`. If an agent makes a mistake on step 6:
-- The developer can run `agent-spine run workflow.yaml --resume <snapshot-id-step-5>`.
-- History is never overwritten. Replay creates a new branched execution path with its own lineage.
+- The developer can inspect the run with `agent-spine inspect <EXECUTION_ID>` and recreate its final state with `agent-spine replay <EXECUTION_ID>`.
+- Snapshots are appended in order; the snapshot table is not updated in place.
 
 ---
 
@@ -103,40 +102,37 @@ Every successful node transition creates an append-only entry in `state.db`. If 
 
 ### 4.1 Workflow Execution & Lifecycle
 - `agent-spine run <WORKFLOW.yaml>`: Execute a workflow definition synchronously.
-  - `--meta <STRING>`: Attach user task context or descriptive objective to the run.
-  - `--var <KEY=VALUE>`: Supply or override input variables for the workflow template (repeatable).
-  - `--resume <SNAPSHOT_ID>`: Resume execution from a prior immutable state snapshot.
-  - `--dry-run`: Parse and validate graph dependencies without executing steps.
-  - `--db <PATH>`: Custom path to SQLite state database (default: `~/.autonomic/state/spine/state.db`).
-- `agent-spine validate <WORKFLOW.yaml>`: Validate YAML syntax, schema version, node kinds, and ensure DAG is acyclic (no circular dependencies).
-- `agent-spine status [<WORKFLOW_ID>]`: Inspect real-time status of running, paused, or completed workflows.
-  - `--json`: Output execution metrics, step statuses, and output variables in raw JSON.
+  - `-p, --payload <JSON>`: Initial JSON payload.
+  - `-m, --meta <TEXT>`: Use agent-brain to select the workflow from this task prompt before execution.
+  - `-b, --brain`: Enable agent-brain routing and enrichment.
+  - `-d, --db <PATH>`: SQLite state database (default: `~/.autonomic/logs/spine/state.db`).
+- `agent-spine validate <WORKFLOW.yaml>`: Validate DAG syntax, node types, and acyclicity.
+- `agent-spine inspect <EXECUTION_ID>`: Show the history of one execution.
+- `agent-spine replay <EXECUTION_ID>`: Recreate an execution's final state.
+- `agent-spine status`: Show the capabilities planned for the current scaffold.
 
 ### 4.2 Human-in-the-Loop Approval Gates
-- `agent-spine approve <WORKFLOW_ID> --step <STEP_NAME>`: Approve a paused `ApprovalGate` node to resume workflow execution.
-- `agent-spine reject <WORKFLOW_ID> --step <STEP_NAME> [--reason <STRING>]`: Reject a paused approval gate, halting execution with an error snapshot.
+There are no `approve` or `reject` commands. Gates auto-approve unless auto-approval is turned off; see the `ApprovalGate` node description above for the `approved: true` payload rule.
 
 ### 4.3 Template Scaffolding & Registry
-- `agent-spine init`: Initialize local workflow directory and scaffold default configurations.
-  - `--with <@TEMPLATE>`: Scaffold from a curated ecosystem template:
-    - `@bugfix`: Reproduce → isolate → fix → verify loop.
-    - `@feature-from-spec`: Constitution + spec → plan → implement → test → review.
-    - `@mcp-health-check`: Audit schemas → probe gateways → verify route_task.
-    - `@release-notes`: Tag diff → changelog synthesis → approval gate.
-    - `@stacked-pr`: Rebase stacked branches → resolve conflicts → test suite.
-- `agent-spine registry list`: List all available built-in and curated workflow templates.
+- `agent-spine init`: Scaffold an example workflow and check the environment.
+  - `-f, --force`: Skip prerequisite checks (protoc, bun, agent-brain).
+  - `-d, --dir <DIR>`: Target directory (default: `~/.autonomic/state/spine`).
+  - `-w, --with <WORKFLOW>`: Scaffold a built-in workflow instead of the generic example. `--with list` shows the built-in workflows (for example `engineering-safety`, `feature-from-spec`, `system-architect`) and the agent-brain registry workflows (for example `@bugfix`, `@feature`).
 
 ### 4.4 Daemon & Server Modes
-- `agent-spine serve`: Start HTTP REST API server and NATS JetStream event listener.
-  - `--port <PORT>`: HTTP API port (default: `3001`).
-  - `--relay-port <PORT>`: Dashboard relay port (default: `3100`).
-  - `--nats-url <URL>`: NATS broker URL (default: `nats://127.0.0.1:4222`).
+- `agent-spine serve`: Start the live dashboard API.
+  - `-p, --port <PORT>`: API port (default: `3000`).
+  - `--dashboard-port <PORT>`: Dashboard port (default: `3001`).
+  - `--nats-url <URL>`: Optional NATS JetStream URL for event publishing.
+- `agent-spine event serve`: Start the event bus server (default port `3100`).
 - `agent-spine mcp-serve`: Start standalone stdio MCP server exposing workflow orchestration tools directly to an IDE or any MCP host.
 
 ### 4.5 Diagnostics & Brain Integration
-- `agent-spine doctor`: Verify rustc toolchain, SQLite database access, NATS JetStream reachability, and agent-brain MCP connectivity.
-- `agent-spine brain health`: Probe `agent-brain` stdio MCP server for responsiveness.
-- `agent-spine brain route "<TASK>"`: Test task routing and context hydration through `agent-brain`.
+- `agent-spine doctor`: Check rustc, protoc, bun, the `agent-brain` binary, the spine state directory and the example workflow.
+- `agent-spine brain health`: Check whether agent-brain is reachable.
+- `agent-spine brain route <TASK>`: Send a `route_task` query to agent-brain and show the response.
+- `agent-spine brain status`: Show agent-brain index and status information.
 
 ---
 
@@ -145,41 +141,17 @@ Every successful node transition creates an append-only entry in `state.db`. If 
 When running in MCP mode (`agent-spine mcp-serve`), the following tools are exposed:
 
 ### 5.1 `spine_submit_workflow`
-- **Description:** Submits a declarative YAML workflow for execution. Returns execution ID for tracking.
+- **Description:** Submits a YAML workflow for execution and returns its workflow ID.
 - **Parameters:**
-  - `workflow_yaml` (string, optional): Inline YAML content of the workflow definition.
-  - `template_name` (string, optional): Registered template alias (e.g. `@bugfix`, `@release-notes`).
-  - `variables` (object, optional): Key-value map of input parameters for the workflow.
-  - `metadata` (string, optional): Context string describing the task objective.
-- **Return Object:**
-  - `workflow_id`: Unique identifier for the spawned execution instance.
-  - `status`: Initial status (`running`, `queued`, or `failed`).
-  - `initial_snapshot_id`: ID of the baseline snapshot.
+  - `yaml` (string, required): Inline YAML content of the workflow definition.
+  - `name` (string, optional): Name for the workflow run.
+- **Return:** The workflow ID, as text.
 
 ### 5.2 `spine_workflow_status`
 - **Description:** Queries the current execution state, active steps, outputs, and snapshots of a workflow.
 - **Parameters:**
   - `workflow_id` (string, required): The target execution ID.
-- **Return Object:**
-  - `workflow_id`: Unique execution identifier.
-  - `state`: Current state (`running`, `paused_approval`, `completed`, `failed`, `cancelled`).
-  - `active_steps`: List of currently executing node names.
-  - `completed_steps`: List of finished nodes with their exit codes and output values.
-  - `pending_gate`: Details on any active `ApprovalGate` waiting for human input.
-
-### 5.3 `spine_approve_step`
-- **Description:** Unblocks a workflow step paused at an `ApprovalGate`.
-- **Parameters:**
-  - `workflow_id` (string, required): Execution identifier.
-  - `step_name` (string, required): Name of the paused gate step.
-  - `decision` (string, required): `"approve"` or `"reject"`.
-  - `reason` (string, optional): Optional rationale or review feedback.
-
-### 5.4 `spine_cancel_workflow`
-- **Description:** Terminates an actively running workflow DAG and marks active steps cancelled.
-- **Parameters:**
-  - `workflow_id` (string, required): Execution identifier.
-  - `reason` (string, optional): Optional reason for cancellation.
+- **Return:** The execution's current status, as text.
 
 ---
 
@@ -241,21 +213,20 @@ nodes:
 - **Symptom:** Workflow status shows `paused_approval` and CLI hangs or agent waits.
 - **Resolution:**
   ```bash
-  # Check active approval requirements
-  agent-spine status <workflow-id>
-  # Approve the gate
-  agent-spine approve <workflow-id> --step human_review
+  # Inspect the execution to see which gate is waiting
+  agent-spine inspect <EXECUTION_ID>
+  # Gates auto-approve unless auto-approval is turned off. There is no CLI command to approve a gate.
   ```
 
-### 7.2 Problem: Resume Execution After a Failed Node
+### 7.2 Problem: Re-run After a Failed Node
 - **Symptom:** Workflow aborted at step 3 due to syntax error in generated code.
 - **Resolution:**
   ```bash
-  # 1. Inspect recent snapshots in state.db
-  sqlite3 ~/.autonomic/state/spine/state.db "SELECT id, node_id, status FROM snapshots ORDER BY id DESC LIMIT 5;"
+  # 1. Inspect the failed execution
+  agent-spine inspect <EXECUTION_ID>
   # 2. Fix the file manually or adjust prompt
-  # 3. Resume from snapshot 4 (before the failure)
-  agent-spine run bugfix.yaml --resume snap_01J7K...
+  # 3. Run the workflow again. There is no resume command.
+  agent-spine run bugfix.yaml
   ```
 
 ### 7.3 Problem: NATS JetStream Disconnected During Workflow
