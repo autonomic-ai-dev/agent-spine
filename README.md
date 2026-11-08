@@ -113,34 +113,41 @@ cargo build --release -p agent-spine
 ## Declarative Workflow Example
 
 ```yaml
-version: 1
 name: bugfix_pipeline
+version: 1
 description: "Reproduce, isolate, fix, and verify a bug with human sign-off"
+start_node: reproduce_failure
 
 nodes:
-  - id: reproduce_failure
+  - name: reproduce_failure
     kind: verify
     command: "cargo test --test reproduce_bug"
-    continue_on_failure: true
 
-  - id: isolate_and_patch
+  - name: isolate_and_patch
     kind: agent
-    depends_on: [reproduce_failure]
     description: "Analyze test failure, isolate root cause, and apply minimal patch"
-    retry:
+    retry_policy:
       max_attempts: 2
       backoff_ms: 1000
 
-  - id: verify_fix
+  - name: verify_fix
     kind: verify
-    depends_on: [isolate_and_patch]
     command: "cargo test --all-features"
 
-  - id: sign_off
+  - name: sign_off
     kind: approval_gate
-    depends_on: [verify_fix]
     description: "Operator sign-off before committing changes"
+
+edges:
+  - from: reproduce_failure
+    to: isolate_and_patch
+  - from: isolate_and_patch
+    to: verify_fix
+  - from: verify_fix
+    to: sign_off
 ```
+
+Check it with `agent-spine validate bugfix.yaml`. Built-in workflows are available through `agent-spine init --with list`.
 
 ---
 
