@@ -4,7 +4,7 @@
 
 [![Version](https://img.shields.io/badge/version-1.0.0--rc3-blue.svg)](CHANGELOG.md)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-yellow.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey.svg)](https://autonomic-ai.dev)
+[![Platform](https://img.shields.io/badge/platform-macOS%20(Apple%20Silicon)-lightgrey.svg)](https://autonomic-ai.dev)
 [![Documentation](https://img.shields.io/badge/docs-autonomic--ai.dev-black.svg)](https://autonomic-ai.dev)
 
 Part of [Autonomic AI](https://autonomic-ai.dev), alongside [agent-brain](https://github.com/autonomic-ai-dev/agent-brain). Replaces probabilistic agent prompt loops with **declarative, version-controlled Directed Acyclic Graphs (DAGs)**, immutable snapshots, and human-in-the-loop gates.
@@ -19,9 +19,9 @@ flowchart TD
     Validate --> Walker["Tokio Asynchronous Graph Walker"]
     
     subgraph ExecutionEngine ["Deterministic Node Execution"]
-        Walker --> AgentNode["Agent Node<br/>(~500-Tok Knapsack Injected)"]
+        Walker --> AgentNode["Agent Node<br/>(Knapsack Injected from agent-brain)"]
         Walker --> VerifyNode["Verify Node<br/>(Active Command Execution)"]
-        Walker --> GateNode["ApprovalGate Node<br/>(Suspends for Human Sign-off)"]
+        Walker --> GateNode["ApprovalGate Node<br/>(Pauses Until Approved)"]
         Walker --> SpecNode["SpeculativeFork Node<br/>(Isolated Git Worktrees)"]
     end
 
@@ -30,8 +30,8 @@ flowchart TD
     GateNode --> Snapshot
     SpecNode --> Snapshot
 
-    Snapshot --> BrainSync[("Procedure Graph Sync<br/>(agent-brain / Schema v23)")]
-    Snapshot --> Replay["Time-Travel Replay & Resume"]
+    Snapshot --> BrainSync[("Procedure Graph Sync<br/>(agent-brain / Schema v25)")]
+    Snapshot --> Replay["Replay an execution's final state"]
 ```
 
 ---
@@ -40,11 +40,11 @@ flowchart TD
 
 | Challenge in Agentic Automation | agent-spine Solution | Mechanism |
 | :--- | :--- | :--- |
-| **Unbounded Agent Retries & Token Burns** | Strict DAG execution bounds worker tasks to isolated steps with retry policies | Exponential backoff, circuit breakers, and critical-path scheduling |
+| **Unbounded Agent Retries & Token Burns** | Strict DAG execution bounds worker tasks to isolated steps with retry policies | Exponential backoff and circuit breakers |
 | **Hallucinatory Control Flow** | Declarative YAML topology dictates transitions and branching conditions | Acyclic graph validator with boolean condition expressions |
-| **Silent Failures & Missing Evidence** | `Verify` nodes actively execute shell validation commands under timeouts | Captures exit codes, stdout/stderr, and fails closed |
+| **Silent Failures & Missing Evidence** | `Verify` nodes actively execute shell validation commands under timeouts | Captures exit codes and stdout/stderr |
 | **Context Window Pollution** | Each node is injected with a surgical cognitive knapsack from `agent-brain` | Node-specific `_brain_knapsack` with token budgeting |
-| **Disaster Recovery Amnesia** | Immutable state snapshots recorded at every step transition | `--resume <seq>` CLI and 1-click dashboard replay |
+| **Disaster Recovery Amnesia** | Immutable state snapshots recorded at every step transition | `agent-spine replay <EXECUTION_ID>` recreates a run's final state |
 | **Flaky or Speculative Refactors** | Parallel speculative worktree branching | Evaluates multiple git branches concurrently, merging winning verified path |
 
 ---
@@ -53,9 +53,9 @@ flowchart TD
 
 | Kind | Purpose | Behavior |
 | :--- | :--- | :--- |
-| **`Agent`** | Discrete cognitive task | Hydrates ~500-token knapsack via `agent-brain route_task`, delegates to worker, snapshots result |
+| **`Agent`** | Discrete cognitive task | Hydrates a knapsack of up to 500 tokens via `agent-brain route_task`, delegates to worker, snapshots result |
 | **`Verify`** | Machine validation | Actively executes `command`, captures exit code and output, sets `verified` status |
-| **`ApprovalGate`** | Human-in-the-loop barrier | Suspends execution and awaits operator `agent-spine approve` or dashboard action |
+| **`ApprovalGate`** | Human-in-the-loop barrier | Pauses the workflow until the node payload has `approved: true`. Gates auto-approve by default. |
 | **`SpeculativeFork`** | Competitive multi-branching | Spawns isolated Git worktrees to evaluate multiple solutions concurrently |
 | **`Fork` / `Join`** | Concurrency barrier | Fans out across parallel branches, joining when all prerequisites resolve |
 | **`Debate`** | Multi-agent refinement | Alternates between coder and critic agents in iterative rounds |
@@ -97,16 +97,16 @@ cargo build --release -p agent-spine
 
 | Command | Purpose |
 | :--- | :--- |
-| `agent-spine init` | Scaffolds `.autonomic/workflows/` and starter templates |
+| `agent-spine init` | Scaffolds an example workflow and checks the environment |
 | `agent-spine validate <file>` | Validates DAG syntax, node types, and acyclicity |
 | `agent-spine run <file>` | Executes a workflow DAG synchronously |
-| `agent-spine run <file> --resume <seq>` | Time-travel resume from a previous state snapshot |
-| `agent-spine status [<id>]` | Real-time status of active or completed runs |
-| `agent-spine approve <id> --step <name>` | Unblocks a paused `ApprovalGate` node |
-| `agent-spine reject <id> --step <name>` | Rejects an approval gate, halting execution safely |
-| `agent-spine serve` | Starts HTTP API server and Svelte dashboard on `:3100` |
+| `agent-spine run <file> --brain` | Enables agent-brain routing and enrichment |
+| `agent-spine inspect <EXECUTION_ID>` | Shows the history of one execution |
+| `agent-spine replay <EXECUTION_ID>` | Recreates an execution's final state |
+| `agent-spine status` | Lists the capabilities planned for this scaffold |
+| `agent-spine serve` | Starts the live dashboard API on `:3000` and the dashboard on `:3001` |
 | `agent-spine mcp-serve` | Starts stdio MCP server for Cursor, Claude, AGY |
-| `agent-spine doctor` | Checks toolchain, SQLite storage, and `agent-brain` bridge |
+| `agent-spine doctor` | Checks rustc, protoc, bun, the `agent-brain` binary, the spine state directory and the example workflow |
 
 ---
 
