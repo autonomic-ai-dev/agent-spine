@@ -79,15 +79,13 @@ flowchart TD
 - Downstream *Join* nodes automatically pause until all incoming prerequisite edges resolve successfully.
 
 ### 3.2 Bounded Exponential Retries
-To prevent recursive hallucinatory loops, each node configuration supports an explicit retry block:
+Each node can set a retry policy with two fields, `max_attempts` and `backoff_ms`:
 ```yaml
-retry:
+retry_policy:
   max_attempts: 3
-  initial_delay_ms: 1000
-  backoff_multiplier: 2.0
-  max_delay_ms: 10000
+  backoff_ms: 1000
 ```
-If `max_attempts` is exceeded, the node halts, records failure diagnostics, and either aborts the graph or triggers an alternate fallback path if defined in the YAML.
+Retries use exponential backoff from the base `backoff_ms`. When the attempts run out, the node fails.
 
 ### 3.3 Immutable State Snapshots (Time-Travel Debugging)
 Every successful node transition creates an append-only entry in `state.db`. If an agent makes a mistake on step 6:
@@ -160,49 +158,46 @@ When running in MCP mode (`agent-spine mcp-serve`), the following tools are expo
 Below is an authentic, production-grade example of a workflow definition (`bugfix-pipeline.yaml`):
 
 ```yaml
-version: 1
 name: bugfix_pipeline
+version: 1
 description: "Reproduce, isolate, fix, and verify a bug with human sign-off"
-
-inputs:
-  issue_id:
-    type: string
-    description: "Issue or bug ticket identifier"
-  test_command:
-    type: string
-    default: "cargo test"
+start_node: reproduce_failure
 
 nodes:
-  - id: reproduce_failure
-    kind: Verify
-    command: "${test_command}"
-    description: "Run test suite to verify reproduction of bug"
-    continue_on_failure: true
+  - name: reproduce_failure
+    kind: verify
+    command: "cargo test --test reproduce_bug"
+    description: "Run the reproduction test"
 
-  - id: isolate_and_patch
-    kind: Agent
-    depends_on: [reproduce_failure]
-    prompt: "Analyze test failure in issue ${issue_id}, isolate root cause, and apply minimal patch"
-    retry:
+  - name: isolate_and_patch
+    kind: agent
+    description: "Analyze the test failure, isolate the root cause, and apply a minimal patch"
+    retry_policy:
       max_attempts: 2
-      initial_delay_ms: 1000
+      backoff_ms: 1000
 
-  - id: verify_fix
-    kind: Verify
-    depends_on: [isolate_and_patch]
-    command: "${test_command}"
-    description: "Confirm all tests pass cleanly after patch"
+  - name: verify_fix
+    kind: verify
+    command: "cargo test --all-features"
+    description: "Confirm all tests pass after the patch"
 
-  - id: human_review
-    kind: ApprovalGate
-    depends_on: [verify_fix]
-    description: "Review git diff and test verification output before final commit"
-    timeout_secs: 3600
+  - name: human_review
+    kind: approval_gate
+    description: "Review the diff and the verification output before committing"
 
-  - id: commit_and_log
-    kind: Agent
-    depends_on: [human_review]
-    prompt: "Commit changes using conventional commit message and record verification outcome"
+  - name: commit_and_log
+    kind: agent
+    description: "Commit with a conventional commit message and record the verification outcome"
+
+edges:
+  - from: reproduce_failure
+    to: isolate_and_patch
+  - from: isolate_and_patch
+    to: verify_fix
+  - from: verify_fix
+    to: human_review
+  - from: human_review
+    to: commit_and_log
 ```
 
 ---
