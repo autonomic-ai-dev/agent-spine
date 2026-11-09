@@ -17,7 +17,7 @@ Most AI coding agents fail because they rely on unconstrained, probabilistic pro
 - If step 4 fails, the agent often enters an hallucinatory retry loop, burns hundreds of dollars in tokens, or destroys working code.
 - There is no audit trail, no deterministic replay, no coordinated parallelism, and no verifiable human approval gate.
 
-`agent-spine` replaces ad-hoc prompt improvisation with **version-controlled, declarative Directed Acyclic Graphs (DAGs)** written in YAML:
+`agent-spine` replaces ad-hoc prompt improvisation with **version-controlled, declarative graphs of named nodes and edges** written in YAML. Workflows may contain cycles:
 - The graph dictates the control flow, concurrency, checkpoints, and gates.
 - The LLM acts strictly as a bounded worker executing isolated tasks *within* designated nodes.
 - Every state change is appended as a snapshot in SQLite, so a finished run can be inspected and replayed with `agent-spine replay`.
@@ -29,9 +29,9 @@ Most AI coding agents fail because they rely on unconstrained, probabilistic pro
 ```mermaid
 flowchart TD
     RunCmd["agent-spine run <workflow.yaml>"] --> Parse["Parse YAML & Validate Schema"]
-    Parse --> CheckCycle{"DAG Cycle<br>Check"}
-    CheckCycle -->|Cycle Detected| ErrExit["Exit with validation error"]
-    CheckCycle -->|Valid DAG| InitState["Initialize Execution in state.db"]
+    Parse --> Validated{"Check node kinds<br>and edges"}
+    Validated -->|Invalid| ErrExit["Exit with validation error"]
+    Validated -->|Valid| InitState["Initialize Execution in state.db"]
 
     subgraph DAGExecution ["Tokio Asynchronous Graph Walker"]
         InitState --> Walk["Evaluate Ready Nodes (Dependencies Resolved)"]
@@ -63,11 +63,20 @@ flowchart TD
     FinishWork --> CompletionNotify["Publish SPINE.workflow.completed via JetStream"]
 ```
 
-### 2.1 The Four First-Class Node Kinds (`NodeKind`)
+### 2.1 Node Kinds (`NodeKind`)
+
+The released enum in `src/workflow.rs` defines eleven kinds. The first four are described below, then the rest.
 
 1. **`Agent`**: Represents an isolated cognitive subtask. The step defines input variables, expected output keys, and optional prompt instructions. The executor hydrates required context via `BrainRouter` (querying `agent-brain`), runs the subtask, and collects outputs.
 2. **`Checkpoint`**: An explicit synchronization barrier that captures an immutable state snapshot (`Snapshot`) of the workflow state at that point.
-3. **`Verify`**: Executes an allowlisted validation command (e.g. `cargo check`, `npm test`, `pytest`). Must return exit code 0 to transition to subsequent nodes.4. **`ApprovalGate`**: A Human-in-the-Loop (HITL) safety barrier. When the execution reaches this node, the `tokio` worker suspends execution, enters the `PendingApproval` state, and emits events on the NATS bus when one is configured. A gate auto-approves unless auto-approval is turned off. When it is off, the node waits until its payload carries `approved: true`. No CLI command sets that flag.
+3. **`Verify`**: Executes an allowlisted validation command (e.g. `cargo check`, `npm test`, `pytest`). Must return exit code 0 to transition to subsequent nodes.
+4. **`ApprovalGate`**: A Human-in-the-Loop (HITL) safety barrier. When the execution reaches this node, the `tokio` worker suspends execution, enters the `PendingApproval` state, and emits events on the NATS bus when one is configured. A gate auto-approves unless auto-approval is turned off. When it is off, the node waits until its payload carries `approved: true`. No CLI command sets that flag.
+5. **`Fork` / `Join`**: `Fork` runs one branch per outgoing edge in parallel. `Join` waits for all branches of the matching `Fork` before the workflow continues.
+6. **`Router`**: Sets the variables that conditional edges use.
+7. **`Debate`**: A coder and a critic alternate for a set number of rounds, or until the critic approves.
+8. **`Vote`**: Runs the same prompt several times and selects the best output, by majority or by the lowest validation error.
+9. **`Hydrate`**: Collects static context, such as the git diff, test output or file contents, into the payload before an agent runs.
+10. **`SpeculativeFork`**: Planned. The released executor passes its payload through unchanged. It does not create worktrees or select a winner.
 
 ---
 
@@ -104,7 +113,7 @@ Every successful node transition creates an append-only entry in `state.db`. If 
   - `-m, --meta <TEXT>`: Use agent-brain to select the workflow from this task prompt before execution.
   - `-b, --brain`: Enable agent-brain routing and enrichment.
   - `-d, --db <PATH>`: SQLite state database (default: `~/.autonomic/logs/spine/state.db`).
-- `agent-spine validate <WORKFLOW.yaml>`: Validate DAG syntax, node types, and acyclicity.
+- `agent-spine validate <WORKFLOW.yaml>`: Validate workflow syntax and node types. Workflows with cycles are accepted.
 - `agent-spine inspect <EXECUTION_ID>`: Show the history of one execution.
 - `agent-spine replay <EXECUTION_ID>`: Recreate an execution's final state.
 - `agent-spine status`: Show the capabilities planned for the current scaffold.
@@ -145,11 +154,16 @@ When running in MCP mode (`agent-spine mcp-serve`), the following tools are expo
   - `name` (string, optional): Name for the workflow run.
 - **Return:** The workflow ID, as text.
 
-### 5.2 `spine_workflow_status`
-- **Description:** Queries the current execution state, active steps, outputs, and snapshots of a workflow.
+### 5.2 `spine_check_status`
+- **Description:** Checks the status of a workflow execution by ID.
 - **Parameters:**
   - `workflow_id` (string, required): The target execution ID.
 - **Return:** The execution's current status, as text.
+
+### 5.3 `spine_list_workflows`
+- **Description:** Lists recent workflow executions with their IDs, names, statuses and timestamps.
+- **Parameters:**
+  - `limit` (integer, optional): Maximum number of executions to return.
 
 ---
 
