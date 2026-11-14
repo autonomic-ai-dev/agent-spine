@@ -2,15 +2,15 @@
 ///
 /// These are compiled into the binary via `include_str!` so they are always
 /// available, even without the `workflows/` directory on disk.
-pub const UNIVERSAL_DEVELOPER: &str = include_str!("../../workflows/universal-developer.yaml");
-pub const DATABASE_MIGRATION: &str = include_str!("../../workflows/database-migration.yaml");
-pub const SECURITY_PATCHER: &str = include_str!("../../workflows/security-patcher.yaml");
-pub const DEEP_CODE_REVIEW: &str = include_str!("../../workflows/deep-code-review.yaml");
-pub const BRUTAL_REFACTOR: &str = include_str!("../../workflows/brutal-refactor.yaml");
-pub const SYSTEM_ARCHITECT: &str = include_str!("../../workflows/system-architect.yaml");
-pub const ROOT_CAUSE_ANALYSIS: &str = include_str!("../../workflows/root-cause-analysis.yaml");
-pub const FEATURE_FROM_SPEC: &str = include_str!("../../workflows/feature-from-spec.yaml");
-pub const ENGINEERING_SAFETY: &str = include_str!("../../workflows/engineering-safety.yaml");
+pub const UNIVERSAL_DEVELOPER: &str = include_str!("../workflows/universal-developer.yaml");
+pub const DATABASE_MIGRATION: &str = include_str!("../workflows/database-migration.yaml");
+pub const SECURITY_PATCHER: &str = include_str!("../workflows/security-patcher.yaml");
+pub const DEEP_CODE_REVIEW: &str = include_str!("../workflows/deep-code-review.yaml");
+pub const BRUTAL_REFACTOR: &str = include_str!("../workflows/brutal-refactor.yaml");
+pub const SYSTEM_ARCHITECT: &str = include_str!("../workflows/system-architect.yaml");
+pub const ROOT_CAUSE_ANALYSIS: &str = include_str!("../workflows/root-cause-analysis.yaml");
+pub const FEATURE_FROM_SPEC: &str = include_str!("../workflows/feature-from-spec.yaml");
+pub const ENGINEERING_SAFETY: &str = include_str!("../workflows/engineering-safety.yaml");
 
 /// All built-in workflow entries with their canonical name and YAML content.
 pub const ALL: &[WorkflowEntry] = &[
