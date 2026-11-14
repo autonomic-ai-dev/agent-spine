@@ -1,6 +1,6 @@
-# agent-spine Verification Suite
+# thesmos Verification Suite
 
-Verification playbooks and automated test suites for `agent-spine` (the Autonomic AI stateful workflow DAG and supervision engine).
+Verification playbooks and automated test suites for `thesmos` (the Autonomic AI stateful workflow DAG and supervision engine).
 
 ## Structure
 - `run.sh`: Master entrypoint executing clippy, check, and all modular playbooks.

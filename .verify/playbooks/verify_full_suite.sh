@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "==> Running full agent-spine test suite..."
-cargo test -p agent-spine -- --nocapture
+echo "==> Running full thesmos test suite..."
+cargo test -p thesmos -- --nocapture
 
-echo "==> Full agent-spine test suite passed."
+echo "==> Full thesmos test suite passed."

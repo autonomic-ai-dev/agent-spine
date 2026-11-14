@@ -1,5 +1,5 @@
 /**
- * OpenCode plugin: require agent-brain route_task before other agent-brain MCP tools.
+ * OpenCode plugin: require tekmor route_task before other tekmor MCP tools.
  * Loads from ~/.config/opencode/plugin/ or .opencode/plugin/
  */
 import { spawnSync } from "node:child_process";
@@ -9,8 +9,8 @@ import { join } from "node:path";
 
 function routeGateScript(): string | null {
   const candidates = [
-    join(homedir(), ".config", "opencode", "hooks", "agent-brain", "route_gate.py"),
-    join(process.cwd(), ".opencode", "hooks", "agent-brain", "route_gate.py"),
+    join(homedir(), ".config", "opencode", "hooks", "tekmor", "route_gate.py"),
+    join(process.cwd(), ".opencode", "hooks", "tekmor", "route_gate.py"),
   ];
   for (const path of candidates) {
     if (existsSync(path)) return path;
@@ -50,7 +50,7 @@ function denyMessage(out: Record<string, unknown>): string {
     (out.agent_message as string) ||
     (out.reason as string) ||
     (out.systemMessage as string) ||
-    "Call agent-brain route_task first (user_message, cwd, open_files)."
+    "Call tekmor route_task first (user_message, cwd, open_files)."
   );
 }
 

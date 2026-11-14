@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="aeswibon/agent-spine"
+REPO="aeswibon/thesmos"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 
 detect_platform() {
@@ -38,22 +38,22 @@ get_latest_version() {
 
 download_url() {
     local version="$1" target="$2"
-    echo "https://github.com/${REPO}/releases/download/v${version}/agent-spine-${target}"
+    echo "https://github.com/${REPO}/releases/download/v${version}/thesmos-${target}"
 }
 
 main() {
-    local target version url bin_name="agent-spine"
+    local target version url bin_name="thesmos"
 
     target="$(detect_platform)"
     echo "detected target: ${target}"
 
-    version="${AGENT_SPINE_VERSION:-$(get_latest_version)}"
+    version="${THESMOS_VERSION:-$(get_latest_version)}"
     echo "latest version: v${version}"
 
     url="$(download_url "${version}" "${target}")"
 
     if [[ "$target" == *windows* ]]; then
-        bin_name="agent-spine.exe"
+        bin_name="thesmos.exe"
         url="${url}.exe"
     fi
 
@@ -76,8 +76,8 @@ main() {
         echo "macOS: cleared quarantine and adhoc-signed ${bin_name}"
     fi
 
-    echo "agent-spine v${version} installed to ${INSTALL_DIR}/${bin_name}"
-    agent-spine --help
+    echo "thesmos v${version} installed to ${INSTALL_DIR}/${bin_name}"
+    thesmos --help
 }
 
 main "$@"

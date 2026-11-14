@@ -1,7 +1,7 @@
 {
   "name": "autonomic-spine-dag",
   "displayName": "Autonomic Spine DAG",
-  "description": "Visualize agent-spine execution DAGs from ~/.autonomic/logs/spine/executions/",
+  "description": "Visualize thesmos execution DAGs from ~/.autonomic/logs/spine/executions/",
   "version": "0.1.0",
   "publisher": "autonomic-ai-dev",
   "engines": {

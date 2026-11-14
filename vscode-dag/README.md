@@ -19,4 +19,4 @@ Press F5 in VS Code to launch the Extension Development Host, then run **Autonom
 
 ## Data source
 
-Reads from `~/.autonomic/logs/spine/executions/` (written by `agent-spine` on workflow completion).
+Reads from `~/.autonomic/logs/spine/executions/` (written by `thesmos` on workflow completion).

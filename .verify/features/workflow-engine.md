@@ -1,16 +1,16 @@
 # workflow-engine
 
-Summary: agent-spine loads a workflow YAML DAG, validates it against the schema, and executes its nodes in dependency order, including linear runs and fork-join branches.
+Summary: thesmos loads a workflow YAML DAG, validates it against the schema, and executes its nodes in dependency order, including linear runs and fork-join branches.
 
 ## Sub-features
 
 - `workflow-validate`: Checks a workflow YAML against the schema.
   - Intent: Reject malformed DAGs before anything runs.
-  - Behaviour: `agent-spine validate <file>` parses the file and reports schema violations.
+  - Behaviour: `thesmos validate <file>` parses the file and reports schema violations.
   - Outcome: Exit 0 for a valid file, non-zero with the violation for an invalid one.
 - `workflow-run`: Executes a workflow with the built-in LocalAgent.
   - Intent: Run a pipeline from the command line.
-  - Behaviour: `agent-spine run <file>` executes nodes in topological order.
+  - Behaviour: `thesmos run <file>` executes nodes in topological order.
   - Outcome: Each node runs once, in dependency order, and its result is recorded.
 - `executor-linear`: Runs a chain of nodes one after another.
   - Intent: Guarantee a dependent node sees its predecessor's output.
@@ -20,27 +20,27 @@ Summary: agent-spine loads a workflow YAML DAG, validates it against the schema,
   - Intent: Allow independent work to overlap while a join node waits for every branch.
   - Behaviour: Covered by `test_fork_join_barrier` and `test_fork_join_with_multi_level_branches`.
   - Outcome: Every branch executes before the join, and multi-level branches all execute.
-- `dashboard-and-grpc`: Serves the gRPC API and dashboard. The gRPC default port is 3100 (`agent-spine/src/main.rs` line 174). The dashboard port defaults to port + 1.
+- `dashboard-and-grpc`: Serves the gRPC API and dashboard. The gRPC default port is 3100 (`thesmos/src/main.rs` line 174). The dashboard port defaults to port + 1.
   - Intent: Let the TUI and UI read workflow state.
-  - Behaviour: `agent-spine serve` starts gRPC and the dashboard API.
+  - Behaviour: `thesmos serve` starts gRPC and the dashboard API.
   - Outcome: The server listens on the gRPC port, and the dashboard on the next port.
 - `api-v1-http`: Runs workflows, reads executions, and publishes or subscribes to events over HTTP.
   - Intent: Give non-CLI callers a way to start and observe a workflow.
-  - Behaviour: Routes in `agent-spine/src/autonomic_api.rs` and `src/event.rs`: `GET /api/v1/health`, `POST /api/v1/workflows/run`, `GET /api/v1/executions/{id}`, `POST /api/v1/events`, `GET /api/v1/events/subscribe`.
+  - Behaviour: Routes in `thesmos/src/autonomic_api.rs` and `src/event.rs`: `GET /api/v1/health`, `POST /api/v1/workflows/run`, `GET /api/v1/executions/{id}`, `POST /api/v1/events`, `GET /api/v1/events/subscribe`.
   - Outcome: Each route returns its documented response. Not verified by a test in this pass.
 
 ## How to get to it (user POV)
 
-- CLI: `agent-spine validate <file>`, `agent-spine run <file>`, `agent-spine serve`
-- MCP: `spine_submit_workflow`, `spine_check_status`, `spine_list_workflows` through the agent-spine MCP server
-- Bridge: `agent-spine brain route <task>` and `agent-spine brain health`
+- CLI: `thesmos validate <file>`, `thesmos run <file>`, `thesmos serve`
+- MCP: `spine_submit_workflow`, `spine_check_status`, `spine_list_workflows` through the thesmos MCP server
+- Bridge: `thesmos brain route <task>` and `thesmos brain health`
 
 ## Verification Suites (Targeted Test Commands)
 
 - **Unit Tests:** `cargo test` (whole crate), or the engine integration file `cargo test --test engine_tests`
 - **Functional API Tests (Hurl):** not yet written for the gRPC or dashboard API.
 - **Allowlisted Verification:** `.verify/run.sh` and the entry points in `.verify/verify.toml`
-- **Preconditions:** Rust toolchain. `protoc` and `bun` are needed for the dashboard build, as `agent-spine doctor` reports.
+- **Preconditions:** Rust toolchain. `protoc` and `bun` are needed for the dashboard build, as `thesmos doctor` reports.
 
 ### Verification Steps
 
