@@ -36,7 +36,7 @@ pub fn spine_config_dir() -> PathBuf {
 pub fn legacy_spine_config_dir() -> PathBuf {
     dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("/tmp"))
-        .join("agent-spine")
+        .join("thesmos")
 }
 
 pub fn ensure_dirs() -> io::Result<()> {

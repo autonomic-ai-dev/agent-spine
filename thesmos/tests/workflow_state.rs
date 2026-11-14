@@ -1,4 +1,4 @@
-use agent_spine::{
+use thesmos::{
     ExecutionId, StateSnapshot, Transition, WorkflowState, state::InMemoryStateStore,
 };
 use serde_json::json;
@@ -69,16 +69,16 @@ fn state_store_rejects_out_of_order_snapshots() {
 #[test]
 fn sqlite_store_preserves_snapshot_history() {
     let temp_dir = tempfile::tempdir().unwrap();
-    let db_path = temp_dir.path().join("agent_spine.db");
+    let db_path = temp_dir.path().join("thesmos.db");
 
     let mut store =
-        agent_spine::state::SqliteStateStore::new(&db_path).expect("failed to create sqlite store");
+        thesmos::state::SqliteStateStore::new(&db_path).expect("failed to create sqlite store");
 
     let execution_id = ExecutionId::new();
     let snapshot1 = StateSnapshot::initial(execution_id, json!({"step": 0}));
     let snapshot2 = snapshot1
         .transition(
-            agent_spine::Transition::new("one", "two"),
+            thesmos::Transition::new("one", "two"),
             json!({"step": 1}),
         )
         .unwrap();

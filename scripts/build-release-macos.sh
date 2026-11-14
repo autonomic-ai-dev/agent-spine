@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Build agent-spine release and Developer ID–sign on macOS (Apple Silicon).
+# Build thesmos release and Developer ID–sign on macOS (Apple Silicon).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-cargo build --release -p agent-spine
+cargo build --release -p thesmos
 "$ROOT/scripts/sign-macos.sh"

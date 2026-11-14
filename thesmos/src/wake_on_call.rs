@@ -4,8 +4,8 @@ use tokio::process::{Child, Command};
 use tracing::{info, warn};
 
 const COMMON_PATHS: &[&str] = &[
-    "/usr/local/bin/agent-brain",
-    "/opt/homebrew/bin/agent-brain",
+    "/usr/local/bin/tekmor",
+    "/opt/homebrew/bin/tekmor",
 ];
 
 async fn find_brain() -> Option<PathBuf> {
@@ -23,7 +23,7 @@ async fn find_brain() -> Option<PathBuf> {
         }
     }
 
-    if let Ok(output) = Command::new("which").arg("agent-brain").output().await {
+    if let Ok(output) = Command::new("which").arg("tekmor").output().await {
         let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
         if !path.is_empty() {
             return Some(PathBuf::from(path));
@@ -31,12 +31,12 @@ async fn find_brain() -> Option<PathBuf> {
     }
 
     if let Ok(home) = std::env::var("HOME") {
-        let cargo_bin = PathBuf::from(&home).join(".cargo/bin/agent-brain");
+        let cargo_bin = PathBuf::from(&home).join(".cargo/bin/tekmor");
         if cargo_bin.exists() {
             return Some(cargo_bin);
         }
 
-        let local_bin = PathBuf::from(&home).join(".local/bin/agent-brain");
+        let local_bin = PathBuf::from(&home).join(".local/bin/tekmor");
         if local_bin.exists() {
             return Some(local_bin);
         }
@@ -47,16 +47,16 @@ async fn find_brain() -> Option<PathBuf> {
 
 pub async fn try_spawn_brain() -> Option<Child> {
     let path = find_brain().await?;
-    info!("Found agent-brain at {:?}, spawning...", path);
+    info!("Found tekmor at {:?}, spawning...", path);
 
     match Command::new(&path).arg("serve").kill_on_drop(true).spawn() {
         Ok(child) => {
             let pid = child.id().unwrap_or(0);
-            info!("agent-brain spawned successfully (pid: {})", pid);
+            info!("tekmor spawned successfully (pid: {})", pid);
             Some(child)
         }
         Err(e) => {
-            warn!("Failed to spawn agent-brain: {}", e);
+            warn!("Failed to spawn tekmor: {}", e);
             None
         }
     }
@@ -66,7 +66,7 @@ pub async fn wait_for_brain(max_attempts: u32) -> bool {
     for attempt in 0..max_attempts {
         if is_brain_alive().await {
             if attempt > 0 {
-                info!("agent-brain ready after {} attempts", attempt + 1);
+                info!("tekmor ready after {} attempts", attempt + 1);
             }
             return true;
         }
@@ -80,7 +80,7 @@ async fn is_brain_alive() -> bool {
     {
         std::process::Command::new("pgrep")
             .arg("-x")
-            .arg("agent-brain")
+            .arg("tekmor")
             .output()
             .map(|o| o.status.success())
             .unwrap_or(false)

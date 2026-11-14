@@ -2,7 +2,7 @@
 
 ## What it does
 
-agent-spine controls how a workflow run stops, repeats, and recovers. It cancels on a termination signal, de-duplicates repeated requests with an idempotency store, tracks pending tasks in a supervisor, bridges that state to NATS, and starts agent-brain when a call needs it and it is not running.
+thesmos controls how a workflow run stops, repeats, and recovers. It cancels on a termination signal, de-duplicates repeated requests with an idempotency store, tracks pending tasks in a supervisor, bridges that state to NATS, and starts tekmor when a call needs it and it is not running.
 
 ## How it works
 
@@ -10,7 +10,7 @@ agent-spine controls how a workflow run stops, repeats, and recovers. It cancels
 2. **Idempotency.** `check_idempotency` (`src/idempotency.rs`) looks up a key in either an in-memory store or a SQLite store. A repeated key returns the stored record. A new key is recorded before the work runs, so a retry is safe.
 3. **Supervisor.** `Supervisor` (`src/supervisor.rs`) holds pending-task metadata and emits `WorkflowEvent` values. Duplicate delegation is rejected, and a delegated task can be resumed.
 4. **State bridge.** `spawn_state_bridge` (`src/jetstream_bridge.rs`) publishes supervisor state on NATS, where agent-tui and agent-ui read it.
-5. **Wake brain.** `try_spawn_brain` (`src/wake_on_call.rs`) starts agent-brain. `wait_for_brain` polls up to `max_attempts` and returns `false` when they run out.
+5. **Wake brain.** `try_spawn_brain` (`src/wake_on_call.rs`) starts tekmor. `wait_for_brain` polls up to `max_attempts` and returns `false` when they run out.
 
 ## Where the code is
 
@@ -19,7 +19,7 @@ agent-spine controls how a workflow run stops, repeats, and recovers. It cancels
 
 ## How to use it
 
-- Interrupt `agent-spine run` or `agent-spine serve` with Ctrl-C. Nothing else is needed.
+- Interrupt `thesmos run` or `thesmos serve` with Ctrl-C. Nothing else is needed.
 - Idempotency and brain wake-up run inside `run` and `serve`. They have no command of their own.
 
 ## How it is verified

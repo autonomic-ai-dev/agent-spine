@@ -145,7 +145,7 @@ pub struct Executor<S: WorkflowState> {
 }
 
 impl<S: WorkflowState> Executor<S> {
-    /// Create a new executor (without agent-brain).
+    /// Create a new executor (without tekmor).
     pub fn new(
         workflow: ValidatedWorkflow,
         state_store: Arc<Mutex<S>>,
@@ -168,7 +168,7 @@ impl<S: WorkflowState> Executor<S> {
         self
     }
 
-    /// Attach agent-brain integration to this executor.
+    /// Attach tekmor integration to this executor.
     #[must_use]
     pub fn with_brain(mut self, brain_cwd: Option<std::path::PathBuf>) -> Self {
         let name = self.workflow.definition().name().to_owned();

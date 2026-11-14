@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Cursor hook: require agent-brain route_task before other tools each user turn."""
+"""Cursor hook: require tekmor route_task before other tools each user turn."""
 
 from __future__ import annotations
 
@@ -14,11 +14,11 @@ import time
 from pathlib import Path
 
 def default_brain_home() -> Path:
-    explicit = os.environ.get("AGENT_BRAIN_HOME", "").strip()
+    explicit = os.environ.get("TEKMOR_HOME", "").strip()
     if explicit:
         return Path(explicit).expanduser()
     autonomic = Path.home() / ".autonomic" / "memory"
-    legacy = Path.home() / ".agent_brain"
+    legacy = Path.home() / ".tekmor"
     if (autonomic / "brain.db").exists() or not legacy.exists():
         return autonomic
     return legacy
@@ -32,10 +32,10 @@ ROUTE_TOOL_NAMES = {
     "route_task",
     "MCP:route_task",
     "mcp:route_task",
-    "mcp_agent-brain_route_task",
-    "mcp__agent-brain__route_task",
-    "agent-brain_route_task",
-    "agent_brain_route_task",
+    "mcp_tekmor_route_task",
+    "mcp__tekmor__route_task",
+    "tekmor_route_task",
+    "tekmor_route_task",
 }
 
 # Meta-discovery tools used across clients (e.g. Claude Code ToolSearch, Cursor/Codex mcp_list_tools)
@@ -69,20 +69,20 @@ def is_meta_or_discovery_tool(event: dict) -> bool:
         return True
     return False
 
-# OpenCode exposes MCP tools as agent-brain_<tool> (no mcp_ prefix).
-OPENCODE_BRAIN_PREFIXES = ("agent-brain_", "agent_brain_")
+# OpenCode exposes MCP tools as tekmor_<tool> (no mcp_ prefix).
+OPENCODE_BRAIN_PREFIXES = ("tekmor_", "tekmor_")
 
-GRACE_SECS = float(os.environ.get("AGENT_BRAIN_ROUTE_GRACE_SECS", "120"))
-STALE_ROUTE_SECS = float(os.environ.get("AGENT_BRAIN_ROUTE_STALE_SECS", "45"))
-OFFLINE_SECS = float(os.environ.get("AGENT_BRAIN_ROUTE_OFFLINE_SECS", "1800"))
-# all = gate every tool (hard blocking across all agents); brain_mcp = gate only agent-brain tools.
-GATE_SCOPE = os.environ.get("AGENT_BRAIN_ROUTE_GATE_SCOPE", "all").strip().lower()
-READ_GATE_MODE = os.environ.get("AGENT_BRAIN_READ_GATE", "hard").strip().lower()
-READ_WARN_BYTES = int(os.environ.get("AGENT_BRAIN_READ_WARN_BYTES", "65536"))
+GRACE_SECS = float(os.environ.get("TEKMOR_ROUTE_GRACE_SECS", "120"))
+STALE_ROUTE_SECS = float(os.environ.get("TEKMOR_ROUTE_STALE_SECS", "45"))
+OFFLINE_SECS = float(os.environ.get("TEKMOR_ROUTE_OFFLINE_SECS", "1800"))
+# all = gate every tool (hard blocking across all agents); brain_mcp = gate only tekmor tools.
+GATE_SCOPE = os.environ.get("TEKMOR_ROUTE_GATE_SCOPE", "all").strip().lower()
+READ_GATE_MODE = os.environ.get("TEKMOR_READ_GATE", "hard").strip().lower()
+READ_WARN_BYTES = int(os.environ.get("TEKMOR_READ_WARN_BYTES", "65536"))
 # After a bounded MCP scout on a path, allow native Read/StrReplace for this long
 # (avoids Shell+python workarounds on large .rs/.md files).
-SCOUT_UNLOCK_SECS = float(os.environ.get("AGENT_BRAIN_SCOUT_UNLOCK_SECS", "3600"))
-DEFAULT_BOUNDED_READ_LINES = int(os.environ.get("AGENT_BRAIN_BOUNDED_READ_LINES", "400"))
+SCOUT_UNLOCK_SECS = float(os.environ.get("TEKMOR_SCOUT_UNLOCK_SECS", "3600"))
+DEFAULT_BOUNDED_READ_LINES = int(os.environ.get("TEKMOR_BOUNDED_READ_LINES", "400"))
 SCOUT_TOOL_MARKERS = (
     "file_summary",
     "read_file_head",
@@ -93,7 +93,7 @@ SCOUT_TOOL_MARKERS = (
     "grep_search",
 )
 # Tool-level enforcement for coding-policy §3 (instructions alone do not stop Shell+python).
-ALLOW_PYTHON_SHELL = os.environ.get("AGENT_BRAIN_ALLOW_PYTHON_SHELL", "").strip().lower() in {
+ALLOW_PYTHON_SHELL = os.environ.get("TEKMOR_ALLOW_PYTHON_SHELL", "").strip().lower() in {
     "1",
     "true",
     "yes",
@@ -112,18 +112,18 @@ PYTHON_DASH_C_RE = re.compile(rf"(?i){_PY_CMD}(?:\s+-\w+)*\s+-c\b")
 PYTHON_STDIN_PIPE_RE = re.compile(rf"(?i)\|\s*(?:sudo\s+)?{_PY}")
 PYTHON_STDIN_MODE_RE = re.compile(rf"(?i){_PY_CMD}(?:\s+-\w+)*\s+-(?:\s|$|[;&|])")
 PYTHON_DENY_AGENT = (
-    "agent-brain: Python via Shell denied (coding-policy §3 tool policy). "
+    "tekmor: Python via Shell denied (coding-policy §3 tool policy). "
     "Do not use python -c / heredoc / piped stdin to read or edit files. "
     "Use MCP file_summary/read_file_head/grep_search then Read/StrReplace, or rg/sed/awk. "
     "Allowed: python -m pytest|unittest|… and running project .py files. "
-    "Override only with user approval: AGENT_BRAIN_ALLOW_PYTHON_SHELL=1."
+    "Override only with user approval: TEKMOR_ALLOW_PYTHON_SHELL=1."
 )
 BLOCKED_PATH_SEGMENTS = ("dist", "node_modules", "target", "build", ".git", ".next", "coverage")
 TOOL_EVENTS_PATH = STATE_PATH.parent / "tool_events.jsonl"
 
 
 def disabled() -> bool:
-    v = os.environ.get("AGENT_BRAIN_ROUTE_HOOKS", "1").strip().lower()
+    v = os.environ.get("TEKMOR_ROUTE_HOOKS", "1").strip().lower()
     return v in {"0", "false", "no", "off"}
 
 
@@ -149,7 +149,7 @@ def session_id_from_event(event: dict | None) -> str:
             return val.strip()
     for env in (
         "CURSOR_CONVERSATION_ID",
-        "AGENT_BRAIN_HOOK_SESSION",
+        "TEKMOR_HOOK_SESSION",
         "AGY_CONVERSATION_ID",
         "CODEX_THREAD_ID",
     ):
@@ -247,12 +247,12 @@ def claude_mcp_parts(tool_name: str) -> tuple[str | None, str | None]:
     return parts[1], parts[2]
 
 
-def is_claude_agent_brain_mcp(tool_name: str) -> bool:
+def is_claude_tekmor_mcp(tool_name: str) -> bool:
     server, _tool = claude_mcp_parts(tool_name)
     if server is None:
         return False
     normalized = server.lower().replace("_", "-")
-    return normalized in {"agent-brain", "agentbrain", "agent-body", "agentbody"}
+    return normalized in {"tekmor", "agentbrain", "agent-body", "agentbody"}
 
 
 def is_opencode_brain_tool(tool: str) -> bool:
@@ -260,14 +260,14 @@ def is_opencode_brain_tool(tool: str) -> bool:
     return any(tool_lower.startswith(prefix) for prefix in OPENCODE_BRAIN_PREFIXES)
 
 
-def is_agent_brain_command(event: dict) -> bool:
+def is_tekmor_command(event: dict) -> bool:
     cmd = str(event.get("command") or "")
     server = str(event.get("server") or "")
     url = str(event.get("url") or "")
     return (
-        "agent-brain" in cmd
-        or server == "agent-brain"
-        or "agent-brain" in url
+        "tekmor" in cmd
+        or server == "tekmor"
+        or "tekmor" in url
     )
 
 
@@ -281,60 +281,60 @@ def is_route_task(event: dict) -> bool:
     if tool_lower.endswith(":route_task") or tool_lower.endswith("_route_task"):
         return True
     _server, claude_tool = claude_mcp_parts(tool)
-    if claude_tool and claude_tool.lower() == "route_task" and is_claude_agent_brain_mcp(tool):
+    if claude_tool and claude_tool.lower() == "route_task" and is_claude_tekmor_mcp(tool):
         return True
     # Cursor Agent tools: mcp_<server>_route_task
     if "route_task" in tool_lower and (
-        "agent-brain" in tool_lower or "agent_brain" in tool_lower
+        "tekmor" in tool_lower or "tekmor" in tool_lower
     ):
         return True
-    if tool == "route_task" and is_agent_brain_command(event):
+    if tool == "route_task" and is_tekmor_command(event):
         return True
     return False
 
 
-def is_agent_brain_route_event(event: dict) -> bool:
+def is_tekmor_route_event(event: dict) -> bool:
     if not is_route_task(event):
         return False
     tool_lower = str(event.get("tool_name") or "").lower()
     return (
-        is_agent_brain_command(event)
-        or "agent-brain" in tool_lower
-        or "agent_brain" in tool_lower
+        is_tekmor_command(event)
+        or "tekmor" in tool_lower
+        or "tekmor" in tool_lower
         or str(event.get("tool_name") or "") in ROUTE_TOOL_NAMES
     )
 
 
-def is_agent_brain_mcp_tool(event: dict) -> bool:
+def is_tekmor_mcp_tool(event: dict) -> bool:
     if is_route_task(event):
         return False
     tool = str(event.get("tool_name") or "").strip()
     tool_lower = tool.lower()
     if is_opencode_brain_tool(tool):
         return True
-    if is_claude_agent_brain_mcp(tool):
+    if is_claude_tekmor_mcp(tool):
         return True
-    if tool_lower.startswith("mcp_agent-brain_") or tool_lower.startswith("mcp_agent-body_"):
+    if tool_lower.startswith("mcp_tekmor_") or tool_lower.startswith("mcp_agent-body_"):
         return True
-    if tool_lower.startswith("mcp_agent_brain_") or tool_lower.startswith("mcp_agent_body_"):
+    if tool_lower.startswith("mcp_tekmor_") or tool_lower.startswith("mcp_agent_body_"):
         return True
-    if tool_lower.startswith("mcp_agent-brain-") or tool_lower.startswith("mcp_agent-body-"):
+    if tool_lower.startswith("mcp_tekmor-") or tool_lower.startswith("mcp_agent-body-"):
         return True
-    if tool_lower.startswith("mcp_agent_brain-") or tool_lower.startswith("mcp_agent_body-"):
+    if tool_lower.startswith("mcp_tekmor-") or tool_lower.startswith("mcp_agent_body-"):
         return True
-    if ("agent-brain" in tool_lower or "agent-body" in tool_lower) and "mcp" in tool_lower:
+    if ("tekmor" in tool_lower or "agent-body" in tool_lower) and "mcp" in tool_lower:
         return True
     server = str(event.get("server") or "").strip().lower()
-    if server in {"agent-brain", "agent_brain", "agent-body", "agent_body"}:
+    if server in {"tekmor", "tekmor", "agent-body", "agent_body"}:
         return True
-    return is_agent_brain_command(event)
+    return is_tekmor_command(event)
 
 
 def should_gate_tool(event: dict) -> bool:
     if GATE_SCOPE == "all":
         return True
     if GATE_SCOPE == "brain_mcp":
-        return is_agent_brain_mcp_tool(event)
+        return is_tekmor_mcp_tool(event)
     return True
 
 
@@ -421,12 +421,12 @@ def deny_payload() -> dict:
     return {
         "permission": "deny",
         "agent_message": (
-            "You must call agent-brain MCP tool route_task first with the user's "
+            "You must call tekmor MCP tool route_task first with the user's "
             "message, current_working_directory, and open_files. If the response "
-            "is empty (tokens_used 0), restart the agent-brain MCP server and "
+            "is empty (tokens_used 0), restart the tekmor MCP server and "
             "retry route_task; pass explicit limits if needed."
         ),
-        "user_message": "agent-brain hook: call route_task before other tools.",
+        "user_message": "tekmor hook: call route_task before other tools.",
     }
 
 
@@ -447,7 +447,7 @@ def disconnect_error(event: dict) -> bool:
 
 
 def route_attempt_failed(event: dict) -> bool:
-    if not is_agent_brain_route_event(event):
+    if not is_tekmor_route_event(event):
         return False
     if event.get("success") is False:
         return True
@@ -516,8 +516,8 @@ def grace_allow_payload(state: dict) -> dict:
     return {
         "permission": "allow",
         "agent_message": (
-            f"agent-brain route gate: proceeding without route_task ({reason}). "
-            "Call route_task when MCP is available; toggle agent-brain in "
+            f"tekmor route gate: proceeding without route_task ({reason}). "
+            "Call route_task when MCP is available; toggle tekmor in "
             "Cursor Settings → MCP if it stays disconnected."
         ),
     }
@@ -700,9 +700,9 @@ def maybe_record_scout_from_event(event: dict) -> None:
     if not any(marker in tool for marker in SCOUT_TOOL_MARKERS):
         return
     if not (
-        is_agent_brain_mcp_tool(event)
-        or "agent-brain" in tool
-        or "agent_brain" in tool
+        is_tekmor_mcp_tool(event)
+        or "tekmor" in tool
+        or "tekmor" in tool
         or tool in SCOUT_TOOL_MARKERS
     ):
         return
@@ -756,15 +756,15 @@ def check_read_tool_gate(event: dict) -> dict | None:
             return {
                 "permission": "deny",
                 "agent_message": (
-                    f"Read denied on blocked path `{path}`. Use agent-brain "
+                    f"Read denied on blocked path `{path}`. Use tekmor "
                     f"{tool_hint} instead, or set allow_blocked_paths with user approval."
                 ),
-                "user_message": "agent-brain: blocked Read on dist/node_modules/target/build.",
+                "user_message": "tekmor: blocked Read on dist/node_modules/target/build.",
             }
         return {
             "permission": "allow",
             "agent_message": (
-                f"Steer: `{path}` is blocked (dist/node_modules/target). Prefer agent-brain "
+                f"Steer: `{path}` is blocked (dist/node_modules/target). Prefer tekmor "
                 f"{tool_hint}. store_memory anti-pattern staged — run store_memory if user agrees."
             ),
         }
@@ -798,19 +798,19 @@ def check_read_tool_gate(event: dict) -> dict | None:
             return {
                 "permission": "deny",
                 "agent_message": (
-                    f"Read denied ({detail}). First call agent-brain {tool_hint} on this path "
+                    f"Read denied ({detail}). First call tekmor {tool_hint} on this path "
                     f"(unlocks native Read/StrReplace for {int(SCOUT_UNLOCK_SECS)}s). "
                     "Do not patch via Shell+python."
                 ),
                 "user_message": (
-                    "agent-brain: scout with file_summary/read_file_head first, then StrReplace — "
+                    "tekmor: scout with file_summary/read_file_head first, then StrReplace — "
                     "no Shell+python."
                 ),
             }
         return {
             "permission": "allow",
             "agent_message": (
-                f"Token steer: prefer agent-brain {tool_hint} before full Read"
+                f"Token steer: prefer tekmor {tool_hint} before full Read"
                 + (f" on `{path}`" if path else "")
                 + ". Anti-pattern suggestion saved for store_memory."
             ),
@@ -819,7 +819,7 @@ def check_read_tool_gate(event: dict) -> dict | None:
 
 
 def try_clear_route_gate(event: dict) -> None:
-    if not is_agent_brain_route_event(event):
+    if not is_tekmor_route_event(event):
         return
     if event.get("success") is False or event.get("error"):
         return
@@ -851,7 +851,7 @@ def try_clear_route_gate(event: dict) -> None:
 
 
 def handle_route_outcome(event: dict) -> None:
-    if not is_agent_brain_route_event(event):
+    if not is_tekmor_route_event(event):
         return
     if route_attempt_failed(event):
         if disconnect_error(event):
@@ -893,7 +893,7 @@ def handle_after_mcp_execution(event: dict) -> dict:
 
 
 def handle_post_tool_use(event: dict) -> dict:
-    # Cursor Agent MCP tools (mcp_agent-brain_*) clear the gate via postToolUse,
+    # Cursor Agent MCP tools (mcp_tekmor_*) clear the gate via postToolUse,
     # not afterMCPExecution.
     handle_route_outcome(event)
     maybe_log_tool_trace(event)
@@ -931,7 +931,7 @@ def python_shell_deny_payload(reason: str) -> dict:
     return {
         "permission": "deny",
         "agent_message": msg,
-        "user_message": f"agent-brain: blocked Python Shell ({reason}).",
+        "user_message": f"tekmor: blocked Python Shell ({reason}).",
     }
 
 
@@ -998,7 +998,7 @@ VERIFICATION_CMD_RE = re.compile(
     r"pytest\b|"
     r"go\s+test\b|"
     r"make\s+test\b|"
-    r"agent-brain\s+(?:proofs|doctor)\b|"
+    r"tekmor\s+(?:proofs|doctor)\b|"
     r"\.verify/"
     r")"
 )
@@ -1030,7 +1030,7 @@ def is_shell_tool(tool: str) -> bool:
 
 
 def looks_like_verification(cmd: str) -> bool:
-    if not cmd or "agent-brain verify" in cmd:
+    if not cmd or "tekmor verify" in cmd:
         return False
     if ".verify/" in cmd:
         return True
@@ -1043,13 +1043,13 @@ def shell_exit_code(event: dict) -> int:
     return 0
 
 
-def agent_brain_bin() -> str:
+def tekmor_bin() -> str:
     home = Path.home()
-    local = home / ".local" / "bin" / "agent-brain"
+    local = home / ".local" / "bin" / "tekmor"
     if local.is_file():
         return str(local)
-    which = shutil.which("agent-brain")
-    return which or "agent-brain"
+    which = shutil.which("tekmor")
+    return which or "tekmor"
 
 
 def maybe_record_verify_outcome(event: dict) -> None:
@@ -1088,7 +1088,7 @@ def maybe_record_verify_outcome(event: dict) -> None:
                     break
         if cwd:
             break
-    bin_path = agent_brain_bin()
+    bin_path = tekmor_bin()
     argv = [
         bin_path,
         "verify",

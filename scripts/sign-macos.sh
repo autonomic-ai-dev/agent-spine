@@ -5,7 +5,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-BIN="${1:-$ROOT/target/release/agent-spine}"
+BIN="${1:-$ROOT/target/release/thesmos}"
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
   echo "sign-macos.sh: skipped (not macOS)" >&2

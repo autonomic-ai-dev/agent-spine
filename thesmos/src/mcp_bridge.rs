@@ -7,7 +7,7 @@ use thiserror::Error;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter};
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 
-/// Types matching agent-brain MCP tool responses.
+/// Types matching tekmor MCP tool responses.
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RouteLimits {
@@ -155,7 +155,7 @@ pub enum BridgeError {
     HandshakeFailed(String),
     #[error("tool call '{0}' failed: {1}")]
     ToolCallFailed(String, String),
-    #[error("agent-brain binary not found: {0}")]
+    #[error("tekmor binary not found: {0}")]
     BinaryNotFound(String),
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
@@ -167,7 +167,7 @@ pub enum BridgeError {
     Timeout(u64),
 }
 
-/// An MCP client that communicates with agent-brain over child-process stdio.
+/// An MCP client that communicates with tekmor over child-process stdio.
 pub struct McpBridge {
     child: Child,
     stdin: BufWriter<ChildStdin>,
@@ -184,7 +184,7 @@ impl Drop for McpBridge {
 }
 
 impl McpBridge {
-    /// Connect to agent-brain by spawning it as a child process.
+    /// Connect to tekmor by spawning it as a child process.
     ///
     /// `brain_path` overrides the automatic binary search.
     /// Returns `BridgeError::BinaryNotFound` if the binary cannot be located.
@@ -238,7 +238,7 @@ impl McpBridge {
     // High-level tool wrappers
     // -----------------------------------------------------------------------
 
-    /// Call agent-brain's `route_task` tool.
+    /// Call tekmor's `route_task` tool.
     pub async fn route_task(
         &mut self,
         user_message: &str,
@@ -270,7 +270,7 @@ impl McpBridge {
         Ok(serde_json::from_value(value)?)
     }
 
-    /// Call agent-brain's `store_memory` tool.
+    /// Call tekmor's `store_memory` tool.
     pub async fn store_memory(
         &mut self,
         topic: &str,
@@ -291,7 +291,7 @@ impl McpBridge {
         self.call_tool("store_memory", args).await
     }
 
-    /// Call agent-brain's `store_trajectory` tool (no route_task gate).
+    /// Call tekmor's `store_trajectory` tool (no route_task gate).
     pub async fn store_trajectory(
         &mut self,
         workflow_id: &str,
@@ -336,7 +336,7 @@ impl McpBridge {
         Ok(serde_json::from_value(value)?)
     }
 
-    /// Call agent-brain's `get_context` tool.
+    /// Call tekmor's `get_context` tool.
     pub async fn get_context(
         &mut self,
         task_description: &str,
@@ -358,7 +358,7 @@ impl McpBridge {
         Ok(serde_json::from_value(value)?)
     }
 
-    /// Call agent-brain's `get_context_for_node` tool (Phase 2: node prompt hydration).
+    /// Call tekmor's `get_context_for_node` tool (Phase 2: node prompt hydration).
     pub async fn get_context_for_node(
         &mut self,
         node_kind: &str,
@@ -380,7 +380,7 @@ impl McpBridge {
         Ok(serde_json::from_value(value)?)
     }
 
-    /// Call agent-brain's `list_memory` tool.
+    /// Call tekmor's `list_memory` tool.
     pub async fn list_memory(&mut self, limit: usize) -> Result<Vec<MemoryFact>, BridgeError> {
         let args = serde_json::json!({ "limit": limit });
         let value = self.call_tool("list_memory", args).await?;
@@ -394,7 +394,7 @@ impl McpBridge {
         // calling a lightweight tool: list_memory with limit 0.
         self.list_memory(0).await.ok();
         Ok(McpServerInfo {
-            name: "agent-brain".into(),
+            name: "tekmor".into(),
             version: "unknown".into(),
         })
     }
@@ -413,7 +413,7 @@ impl McpBridge {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {},
                 "clientInfo": {
-                    "name": "agent-spine",
+                    "name": "thesmos",
                     "version": env!("CARGO_PKG_VERSION")
                 }
             }
@@ -619,10 +619,10 @@ fn resolve_brain_path(override_path: Option<&Path>) -> Result<PathBuf, BridgeErr
     // Check common locations
     let home = std::env::var("HOME").unwrap_or_default();
     let candidates = vec![
-        PathBuf::from("agent-brain"), // resolve from PATH
-        PathBuf::from(format!("{home}/.agent_brain/bin/agent-brain")),
-        PathBuf::from("/usr/local/bin/agent-brain"),
-        PathBuf::from("/opt/homebrew/bin/agent-brain"),
+        PathBuf::from("tekmor"), // resolve from PATH
+        PathBuf::from(format!("{home}/.tekmor/bin/tekmor")),
+        PathBuf::from("/usr/local/bin/tekmor"),
+        PathBuf::from("/opt/homebrew/bin/tekmor"),
     ];
 
     for candidate in &candidates {
@@ -632,7 +632,7 @@ fn resolve_brain_path(override_path: Option<&Path>) -> Result<PathBuf, BridgeErr
     }
 
     // Last resort — let the OS resolve from PATH
-    Ok(PathBuf::from("agent-brain"))
+    Ok(PathBuf::from("tekmor"))
 }
 
 // ---------------------------------------------------------------------------

@@ -5,7 +5,7 @@ use tracing;
 use crate::mcp_bridge::{McpBridge, RouteLimits};
 
 /// Select the appropriate workflow YAML for a given task description
-/// by querying agent-brain for routing recommendations at run start.
+/// by querying tekmor for routing recommendations at run start.
 pub struct MetaRouter {
     workflows_dir: PathBuf,
 }
@@ -15,7 +15,7 @@ impl MetaRouter {
         Self { workflows_dir }
     }
 
-    /// Query agent-brain to select a workflow for the given task prompt.
+    /// Query tekmor to select a workflow for the given task prompt.
     ///
     /// Returns `Some(workflow_path)` when brain recommends a specific workflow,
     /// or `None` to use the default workflow provided by the caller.
@@ -25,7 +25,7 @@ impl MetaRouter {
         let mut bridge = match rt.block_on(McpBridge::connect(None)) {
             Ok(b) => b,
             Err(e) => {
-                tracing::warn!("MetaRouter: agent-brain unavailable ({e}), using default workflow");
+                tracing::warn!("MetaRouter: tekmor unavailable ({e}), using default workflow");
                 return None;
             }
         };
@@ -101,7 +101,7 @@ fn extract_workflow_from_response(
     None
 }
 
-/// Determine whether agent-brain should be used as a meta-router
+/// Determine whether tekmor should be used as a meta-router
 /// for a given CLI invocation.
 ///
 /// If a `--meta` flag is present with a prompt value, the meta-router

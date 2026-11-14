@@ -63,7 +63,7 @@ pub fn run_init(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let config_dir = dir.unwrap_or_else(crate::global_workspace::spine_config_dir);
 
-    let mut progress = ProgressRun::new("agent-spine init").with_total_hint(4);
+    let mut progress = ProgressRun::new("thesmos init").with_total_hint(4);
 
     if with.as_deref() == Some("list") {
         let step = progress.step("list workflows");
@@ -74,12 +74,12 @@ pub fn run_init(
         let registry_entries = crate::registry_workflow::list_registry_aliases();
         if !registry_entries.is_empty() {
             println!();
-            println!("Autonomic Registry workflows (from agent-brain cache):");
+            println!("Autonomic Registry workflows (from tekmor cache):");
             for (alias, desc) in registry_entries {
                 println!("  @{:<24} {}", alias, desc);
             }
             println!();
-            println!("  Run: agent-brain registry sync --local  (if cache is empty)");
+            println!("  Run: tekmor registry sync --local  (if cache is empty)");
         }
         step.done();
         progress.finish();
@@ -95,14 +95,14 @@ pub fn run_init(
         if Command::new("bun").arg("--version").output().is_err() {
             warnings.push("bun — dashboard dev server (https://bun.sh)");
         }
-        if Command::new("agent-brain")
+        if Command::new("tekmor")
             .arg("--version")
             .output()
             .is_err()
             && std::env::var("BRAIN_PATH").is_err()
         {
             warnings.push(
-                "agent-brain — MCP routing & memory (install from GitHub releases or set BRAIN_PATH)",
+                "tekmor — MCP routing & memory (install from GitHub releases or set BRAIN_PATH)",
             );
         }
         if warnings.is_empty() {
@@ -132,7 +132,7 @@ pub fn run_init(
     let (workflow_name, workflow_yaml) = if let Some(ref kind) = with {
         let (name, yaml) = crate::registry_workflow::resolve_workflow_yaml(kind).ok_or_else(|| {
             format!(
-                "Unknown workflow '{kind}'. Use `agent-spine init --with list` to see built-in and @registry workflows."
+                "Unknown workflow '{kind}'. Use `thesmos init --with list` to see built-in and @registry workflows."
             )
         })?;
         (name, yaml)
@@ -157,18 +157,18 @@ pub fn run_init(
     println!();
     println!("Next steps:");
     println!("  Validate your workflow:");
-    println!("    agent-spine validate {}", workflow_path.display());
+    println!("    thesmos validate {}", workflow_path.display());
     println!("  List available built-in workflows:");
-    println!("    agent-spine init --with list");
+    println!("    thesmos init --with list");
     println!("  Start the dashboard server:");
-    println!("    agent-spine serve --db state.db --port 3000");
-    println!("  Check agent-brain connectivity:");
-    println!("    agent-spine brain health");
+    println!("    thesmos serve --db state.db --port 3000");
+    println!("  Check tekmor connectivity:");
+    println!("    thesmos brain health");
     Ok(())
 }
 
 pub fn run_doctor() -> Result<(), Box<dyn std::error::Error>> {
-    let mut progress = ProgressRun::new("agent-spine health check").with_total_hint(7);
+    let mut progress = ProgressRun::new("thesmos health check").with_total_hint(7);
     let mut all_ok = true;
 
     let toolchain = progress.step("rust toolchain");
@@ -199,10 +199,10 @@ pub fn run_doctor() -> Result<(), Box<dyn std::error::Error>> {
         bun.warn("not found (only needed for dashboard dev)");
     }
 
-    let brain = progress.step("agent-brain");
-    if let Ok(output) = Command::new("agent-brain").arg("--version").output() {
+    let brain = progress.step("tekmor");
+    if let Ok(output) = Command::new("tekmor").arg("--version").output() {
         let version = String::from_utf8_lossy(&output.stdout).trim().to_owned();
-        println!("✓ agent-brain: {version}");
+        println!("✓ tekmor: {version}");
         brain.done();
     } else {
         brain.warn("not found (optional — MCP routing & memory)");
@@ -216,12 +216,12 @@ pub fn run_doctor() -> Result<(), Box<dyn std::error::Error>> {
         cfg.done();
     } else if legacy.exists() {
         cfg.warn(format!(
-            "legacy {} — run `agent-spine init` to migrate",
+            "legacy {} — run `thesmos init` to migrate",
             legacy.display()
         ));
     } else {
         cfg.warn(format!(
-            "{} not yet created — run `agent-spine init`",
+            "{} not yet created — run `thesmos init`",
             config_dir.display()
         ));
     }
@@ -245,11 +245,11 @@ pub fn run_doctor() -> Result<(), Box<dyn std::error::Error>> {
 
     let summary = progress.finish();
     println!();
-    println!("agent-spine v{}", env!("CARGO_PKG_VERSION"));
+    println!("thesmos v{}", env!("CARGO_PKG_VERSION"));
     if all_ok && summary.failed == 0 {
         println!("All checks passed.");
     } else {
-        println!("Some checks failed. Run `agent-spine init` for setup help.");
+        println!("Some checks failed. Run `thesmos init` for setup help.");
     }
     Ok(())
 }

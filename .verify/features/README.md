@@ -1,9 +1,9 @@
-# agent-spine features
+# thesmos features
 
 ## Baseline preconditions
 
-- Rust toolchain matching `Cargo.lock`. `protoc` and `bun` are needed for the dashboard, as `agent-spine doctor` reports.
-- gRPC and dashboard checks need `agent-spine serve` on port 3100.
+- Rust toolchain matching `Cargo.lock`. `protoc` and `bun` are needed for the dashboard, as `thesmos doctor` reports.
+- gRPC and dashboard checks need `thesmos serve` on port 3100.
 
 ## Driving conventions
 

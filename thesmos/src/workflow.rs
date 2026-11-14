@@ -15,7 +15,7 @@ pub struct WorkflowDefinition {
     name: String,
     version: u32,
     start_node: String,
-    /// Minimum agent-spine version required to run this workflow (e.g. "0.8.0").
+    /// Minimum thesmos version required to run this workflow (e.g. "0.8.0").
     /// If set, the binary checks at parse/validate time and warns on mismatch.
     #[serde(default)]
     min_spine_version: Option<String>,
@@ -45,14 +45,14 @@ impl WorkflowDefinition {
         }
     }
 
-    /// Set the minimum required agent-spine version.
+    /// Set the minimum required thesmos version.
     #[must_use]
     pub fn with_min_spine_version(mut self, version: impl Into<String>) -> Self {
         self.min_spine_version = Some(version.into());
         self
     }
 
-    /// Return the minimum required agent-spine version, if set.
+    /// Return the minimum required thesmos version, if set.
     #[must_use]
     pub fn min_spine_version(&self) -> Option<&str> {
         self.min_spine_version.as_deref()
@@ -587,7 +587,7 @@ pub enum WorkflowValidationError {
     MissingStartNode { name: String },
     #[error("workflow edge references unknown node: {name}")]
     UnknownNode { name: String },
-    #[error("workflow requires agent-spine >= {required}, but running {current}")]
+    #[error("workflow requires thesmos >= {required}, but running {current}")]
     SpineVersionTooOld { required: String, current: String },
     #[error("failed to read workflow definition from {path}: {source}")]
     Read {
@@ -602,7 +602,7 @@ pub enum WorkflowValidationError {
     },
 }
 
-/// Compare the running agent-spine version against a required minimum.
+/// Compare the running thesmos version against a required minimum.
 ///
 /// Version strings are split on `.` and compared component-wise.
 /// Returns `Ok(())` if the running version is >= required.

@@ -1,12 +1,12 @@
 use serde_json::json;
 use std::sync::{Arc, Mutex};
 
-use agent_spine::WorkflowState;
-use agent_spine::executor::Executor;
-use agent_spine::router::{ConfidenceRouter, RouterAction};
-use agent_spine::state::InMemoryStateStore;
-use agent_spine::supervisor::Supervisor;
-use agent_spine::workflow::{NodeKind, WorkflowDefinition, WorkflowEdge, WorkflowNode};
+use thesmos::WorkflowState;
+use thesmos::executor::Executor;
+use thesmos::router::{ConfidenceRouter, RouterAction};
+use thesmos::state::InMemoryStateStore;
+use thesmos::supervisor::Supervisor;
+use thesmos::workflow::{NodeKind, WorkflowDefinition, WorkflowEdge, WorkflowNode};
 
 async fn wait_for_pending(supervisor: &Supervisor, expected: &[&str]) {
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);

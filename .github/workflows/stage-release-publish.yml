@@ -35,7 +35,7 @@ jobs:
           run-id: ${{ inputs.build_run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: dist
-          pattern: agent-spine-*
+          pattern: thesmos-*
           merge-multiple: true
 
       - name: Extract changelog release notes
@@ -50,8 +50,8 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
-          name: agent-spine ${{ github.ref_name }}
+          name: thesmos ${{ github.ref_name }}
           body_path: release-notes.md
-          files: dist/agent-spine-*
+          files: dist/thesmos-*
           draft: false
           prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') || contains(github.ref_name, 'alpha') }}

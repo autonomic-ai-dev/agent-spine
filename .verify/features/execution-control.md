@@ -1,12 +1,12 @@
 # execution-control
 
-Summary: agent-spine controls how a workflow run stops, repeats, and recovers. It cancels on a signal, de-duplicates repeated requests with an idempotency store, tracks pending tasks in a supervisor that bridges state to NATS, and wakes agent-brain on demand when a call needs it.
+Summary: thesmos controls how a workflow run stops, repeats, and recovers. It cancels on a signal, de-duplicates repeated requests with an idempotency store, tracks pending tasks in a supervisor that bridges state to NATS, and wakes tekmor on demand when a call needs it.
 
 ## Sub-features
 
 - `cancel-on-signal`: Lets a running workflow stop cleanly when the process receives a termination signal.
   - Intent: Avoid leaving nodes half-run after an operator interrupts the process.
-  - Behaviour: `CancelToken` (`agent-spine/src/cancellation.rs` line 10) is shared with `setup_signal_handler` (line 80), which spawns a task that trips the token on the signal.
+  - Behaviour: `CancelToken` (`thesmos/src/cancellation.rs` line 10) is shared with `setup_signal_handler` (line 80), which spawns a task that trips the token on the signal.
   - Outcome: The token reads as cancelled after the signal. How the executor reacts to a cancelled token is not verified in this pass.
 - `idempotency-check`: Returns the stored result for a repeated request instead of running it again.
   - Intent: Make a retried node safe to run twice.
@@ -19,15 +19,15 @@ Summary: agent-spine controls how a workflow run stops, repeats, and recovers. I
 - `state-bridge-to-nats`: Publishes supervisor state to NATS.
   - Behaviour: `spawn_state_bridge` (`src/jetstream_bridge.rs` line 95) takes the supervisor and the NATS URL. `jetstream_bridge.rs` has 2 inline tests.
   - Outcome: Events reach the bus that external dashboards read. Not verified against a live broker in this pass.
-- `wake-brain-on-call`: Starts agent-brain when a call needs it and it is not running.
+- `wake-brain-on-call`: Starts tekmor when a call needs it and it is not running.
   - Behaviour: `try_spawn_brain` (`src/wake_on_call.rs` line 48) starts the process. `wait_for_brain` (line 65) polls up to `max_attempts`.
   - Outcome: `true` when brain answers, `false` after the attempts run out. No test exists for this module.
 
 ## How to get to it (user POV)
 
-- Signal: Ctrl-C or SIGTERM sent to a running `agent-spine run` or `agent-spine serve` process.
+- Signal: Ctrl-C or SIGTERM sent to a running `thesmos run` or `thesmos serve` process.
 - NATS: the supervisor state bridge publishes on the event bus when `serve` is running.
-- Automatic: idempotency and brain wake-up run inside `agent-spine run` and `serve`. They have no separate command.
+- Automatic: idempotency and brain wake-up run inside `thesmos run` and `serve`. They have no separate command.
 
 ## Verification Suites (Targeted Test Commands)
 

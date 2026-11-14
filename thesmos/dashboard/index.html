@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>agent-spine Dashboard</title>
+<title>thesmos Dashboard</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0d1117; color: #c9d1d9; padding: 24px; }
@@ -45,7 +45,7 @@ td { font-size: 0.9rem; }
 </style>
 </head>
 <body>
-<h1>agent-spine Dashboard</h1>
+<h1>thesmos Dashboard</h1>
 
 <div class="status-bar">
   <div class="status-item running" id="status-running">0 running</div>
@@ -101,7 +101,7 @@ let eventStream = null;
 let eventsConnected = false;
 
 async function grpcCall(method, body) {
-  const url = `${BASE}/agent-spine.DashboardService/${method}`;
+  const url = `${BASE}/agent_spine.DashboardService/${method}`;
   const headers = { 'Content-Type': 'application/grpc-web+proto' };
   const res = await fetch(url, { method: 'POST', headers, body });
   if (!res.ok) throw new Error(`gRPC error: ${res.status}`);
@@ -141,7 +141,7 @@ function encodeString(tag, str) {
 
 async function fetchExecutions() {
   try {
-    const url = `${BASE}/agent-spine.DashboardService/ListRunningExecutions`;
+    const url = `${BASE}/agent_spine.DashboardService/ListRunningExecutions`;
     const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/grpc-web+proto' } });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const raw = await res.arrayBuffer();
@@ -231,7 +231,7 @@ async function submitWorkflow() {
   frame[3] = (body.length >> 16) & 255; frame[4] = body.length >> 24;
   frame.set(body, 5);
   try {
-    const res = await fetch(`${BASE}/agent-spine.DashboardService/SubmitWorkflow`, {
+    const res = await fetch(`${BASE}/agent_spine.DashboardService/SubmitWorkflow`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/grpc-web+proto' },
       body: frame,
@@ -258,7 +258,7 @@ function toggleStream() {
   btn.disabled = true;
   const controller = new AbortController();
   eventStream = controller;
-  fetch(`${BASE}/agent-spine.SupervisorService/WatchEvents`, {
+  fetch(`${BASE}/agent_spine.SupervisorService/WatchEvents`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/grpc-web+proto' },
     signal: controller.signal,

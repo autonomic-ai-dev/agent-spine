@@ -1,4 +1,4 @@
-//! Resolve workflow YAML from agent-brain Autonomic Registry cache (`@alias`).
+//! Resolve workflow YAML from tekmor Autonomic Registry cache (`@alias`).
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -41,10 +41,10 @@ fn registry_workflow_yaml(alias: &str) -> Option<(String, String)> {
 }
 
 fn brain_home() -> PathBuf {
-    std::env::var("AGENT_BRAIN_HOME")
+    std::env::var("TEKMOR_HOME")
         .map(PathBuf::from)
-        .or_else(|_| dirs::home_dir().map(|h| h.join(".agent_brain")).ok_or(()))
-        .unwrap_or_else(|_| PathBuf::from(".agent_brain"))
+        .or_else(|_| dirs::home_dir().map(|h| h.join(".tekmor")).ok_or(()))
+        .unwrap_or_else(|_| PathBuf::from(".tekmor"))
 }
 
 fn read_registry_file(home: &Path, name: &str) -> Option<String> {
@@ -52,7 +52,7 @@ fn read_registry_file(home: &Path, name: &str) -> Option<String> {
     fs::read_to_string(path).ok()
 }
 
-/// List `@alias` workflows from agent-brain registry cache.
+/// List `@alias` workflows from tekmor registry cache.
 pub fn list_registry_aliases() -> Vec<(String, String)> {
     let home = brain_home();
     let Some(raw) = read_registry_file(&home, "workflows.json") else {

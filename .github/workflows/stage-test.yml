@@ -28,7 +28,7 @@ jobs:
       - name: Resolve package metadata
         id: meta
         run: |
-          version=$(grep '^version' agent-spine/Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          version=$(grep '^version' thesmos/Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "git_sha=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
 
@@ -41,23 +41,23 @@ jobs:
       - name: Run tests
         env:
           AUTONOMIC_BUDGET_GATE: "0"
-        run: cargo test --release -p agent-spine -- --test-threads=1
+        run: cargo test --release -p thesmos -- --test-threads=1
 
       - name: Snapshot build
-        run: cargo build --release -p agent-spine
+        run: cargo build --release -p thesmos
 
       - name: Stage snapshot binary
         run: |
           mkdir -p dist
-          cp target/release/agent-spine \
-            "dist/agent-spine-snapshot-linux-x86_64-${{ steps.meta.outputs.version }}-${{ steps.meta.outputs.git_sha }}"
-          chmod +x "dist/agent-spine-snapshot-linux-x86_64-${{ steps.meta.outputs.version }}-${{ steps.meta.outputs.git_sha }}"
+          cp target/release/thesmos \
+            "dist/thesmos-snapshot-linux-x86_64-${{ steps.meta.outputs.version }}-${{ steps.meta.outputs.git_sha }}"
+          chmod +x "dist/thesmos-snapshot-linux-x86_64-${{ steps.meta.outputs.version }}-${{ steps.meta.outputs.git_sha }}"
 
       - name: Upload snapshot artifact
         uses: actions/upload-artifact@v7
         with:
-          name: agent-spine-snapshot-linux-x86_64
-          path: dist/agent-spine-snapshot-linux-x86_64-${{ steps.meta.outputs.version }}-${{ steps.meta.outputs.git_sha }}
+          name: thesmos-snapshot-linux-x86_64
+          path: dist/thesmos-snapshot-linux-x86_64-${{ steps.meta.outputs.version }}-${{ steps.meta.outputs.git_sha }}
           if-no-files-found: error
           retention-days: 14
 

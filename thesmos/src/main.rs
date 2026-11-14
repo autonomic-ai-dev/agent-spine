@@ -3,12 +3,12 @@ use std::path::PathBuf;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
-use agent_spine::WorkflowDefinition;
-use agent_spine::mcp_bridge::{McpBridge, RouteLimits};
+use thesmos::WorkflowDefinition;
+use thesmos::mcp_bridge::{McpBridge, RouteLimits};
 
 #[derive(Debug, Parser)]
 #[command(
-    name = "agent-spine",
+    name = "thesmos",
     version,
     about = "Stateful workflow supervision for AI coding agents"
 )]
@@ -19,9 +19,9 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
-    /// Initialize agent-spine: config, example workflow, and prerequisites check.
+    /// Initialize thesmos: config, example workflow, and prerequisites check.
     Init {
-        /// Skip prerequisite checks (protoc, bun, agent-brain).
+        /// Skip prerequisite checks (protoc, bun, tekmor).
         #[arg(short, long)]
         force: bool,
         /// Target directory for workflow files (default: ~/.autonomic/state/spine).
@@ -62,10 +62,10 @@ enum Command {
         /// Path to SQLite database (default: ~/.autonomic/logs/spine/state.db)
         #[arg(short, long)]
         db: Option<PathBuf>,
-        /// Enable agent-brain routing and enrichment.
+        /// Enable tekmor routing and enrichment.
         #[arg(short, long)]
         brain: bool,
-        /// Enable meta-router: query agent-brain to select the workflow YAML
+        /// Enable meta-router: query tekmor to select the workflow YAML
         /// based on this task prompt before execution.
         #[arg(short, long)]
         meta: Option<String>,
@@ -86,7 +86,7 @@ enum Command {
         #[arg(short, long)]
         db: Option<PathBuf>,
     },
-    /// Interact with the agent-brain MCP server.
+    /// Interact with the tekmor MCP server.
     Brain {
         #[command(subcommand)]
         action: BrainCommand,
@@ -132,14 +132,14 @@ enum Command {
 
 #[derive(Debug, Subcommand)]
 enum BrainCommand {
-    /// Check if agent-brain is reachable.
+    /// Check if tekmor is reachable.
     Health,
     /// Send a route_task query and show the response.
     Route {
-        /// The message to route through agent-brain.
+        /// The message to route through tekmor.
         message: String,
     },
-    /// Show agent-brain index and status info.
+    /// Show tekmor index and status info.
     Status,
 }
 
@@ -164,7 +164,7 @@ enum EventCommand {
         /// Event payload as JSON string.
         payload: String,
         /// Source agent name.
-        #[arg(short, long, default_value = "agent-spine")]
+        #[arg(short, long, default_value = "thesmos")]
         source: String,
         /// Event bus URL (default: http://localhost:3100).
         #[arg(short, long, default_value = "http://localhost:3100")]
@@ -228,7 +228,7 @@ async fn main() {
             .build();
 
         use opentelemetry::trace::TracerProvider;
-        let tracer = provider.tracer("agent-spine");
+        let tracer = provider.tracer("thesmos");
 
         opentelemetry::global::set_tracer_provider(provider);
 
@@ -257,16 +257,16 @@ async fn main() {
 
 async fn run(command: Command) -> Result<(), Box<dyn std::error::Error>> {
     match command {
-        Command::Init { force, dir, with } => agent_spine::setup::run_init(force, dir, with),
+        Command::Init { force, dir, with } => thesmos::setup::run_init(force, dir, with),
         Command::Status => {
-            info!("agent-spine supervisor initialized");
-            println!("agent-spine: skeleton ready; workflow validation is available");
+            info!("thesmos supervisor initialized");
+            println!("thesmos: skeleton ready; workflow validation is available");
             Ok(())
         }
-        Command::Doctor => agent_spine::setup::run_doctor(),
+        Command::Doctor => thesmos::setup::run_doctor(),
         Command::Log { name, follow, list } => {
             if list {
-                let logs = agent_spine::log::list_logs()?;
+                let logs = thesmos::log::list_logs()?;
                 if logs.is_empty() {
                     println!("No log files found.");
                 } else {
@@ -279,13 +279,13 @@ async fn run(command: Command) -> Result<(), Box<dyn std::error::Error>> {
             }
             let name = name.ok_or_else(|| {
                 Box::<dyn std::error::Error>::from(
-                    "usage: agent-spine log <name> [--follow]  (or --list to see available logs)",
+                    "usage: thesmos log <name> [--follow]  (or --list to see available logs)",
                 )
             })?;
             if follow {
-                agent_spine::log::follow_log(&name)?;
+                thesmos::log::follow_log(&name)?;
             } else {
-                agent_spine::log::print_log(&name)?;
+                thesmos::log::print_log(&name)?;
             }
             Ok(())
         }
@@ -312,12 +312,12 @@ async fn run(command: Command) -> Result<(), Box<dyn std::error::Error>> {
             brain,
             meta,
         } => {
-            // Meta-router: select workflow YAML via agent-brain
+            // Meta-router: select workflow YAML via tekmor
             let workflow_path = match meta {
                 Some(ref prompt) => {
                     let workflows_dir = workflow.parent().unwrap_or(&workflow);
                     let router =
-                        agent_spine::meta_router::MetaRouter::new(workflows_dir.to_path_buf());
+                        thesmos::meta_router::MetaRouter::new(workflows_dir.to_path_buf());
                     router
                         .select_workflow(prompt)
                         .unwrap_or_else(|| workflow.clone())
@@ -327,53 +327,53 @@ async fn run(command: Command) -> Result<(), Box<dyn std::error::Error>> {
 
             let validated = WorkflowDefinition::from_path(workflow_path)?.validate()?;
             let initial_payload = serde_json::from_str(&payload)?;
-            let db = agent_spine::global_workspace::resolve_state_db(db)?;
+            let db = thesmos::global_workspace::resolve_state_db(db)?;
 
-            let store = agent_spine::state::SqliteStateStore::new(&db)?;
+            let store = thesmos::state::SqliteStateStore::new(&db)?;
             let store = std::sync::Arc::new(std::sync::Mutex::new(store));
 
-            let supervisor = agent_spine::supervisor::Supervisor::new();
+            let supervisor = thesmos::supervisor::Supervisor::new();
 
-            let agent = agent_spine::agent::LocalAgent::new(supervisor.clone());
+            let agent = thesmos::agent::LocalAgent::new(supervisor.clone());
             agent.spawn();
 
-            let cancel = agent_spine::cancellation::CancelToken::new();
-            let _signal_task = agent_spine::cancellation::setup_signal_handler(cancel.clone());
+            let cancel = thesmos::cancellation::CancelToken::new();
+            let _signal_task = thesmos::cancellation::setup_signal_handler(cancel.clone());
 
             let workflow_name = validated.definition().name().to_string();
             let mut executor =
-                agent_spine::executor::Executor::new(validated, store.clone(), supervisor);
+                thesmos::executor::Executor::new(validated, store.clone(), supervisor);
             if brain {
                 executor = executor.with_brain(None);
             }
             executor = executor.with_cancel_token(cancel);
 
             let execution_id = executor.run(initial_payload).await?;
-            use agent_spine::WorkflowState;
+            use thesmos::WorkflowState;
             let history = {
                 let guard = store.lock().map_err(|_| "state lock poisoned")?;
                 guard.history(execution_id)
             };
             let graph_path = {
                 let guard = store.lock().map_err(|_| "state lock poisoned")?;
-                agent_spine::global_workspace::export_execution_graph(
+                thesmos::global_workspace::export_execution_graph(
                     &*guard,
                     execution_id,
                     &workflow_name,
                 )?
             };
             let _dag_path =
-                agent_spine::global_workspace::export_dag_summary(&history, execution_id)?;
+                thesmos::global_workspace::export_dag_summary(&history, execution_id)?;
             println!("Workflow completed. Execution ID: {}", execution_id);
             println!("State db: {}", db.display());
             println!("Execution graph: {}", graph_path.display());
             Ok(())
         }
         Command::Inspect { execution_id, db } => {
-            let db = agent_spine::global_workspace::resolve_state_db(db)?;
-            let store = agent_spine::state::SqliteStateStore::new(&db)?;
+            let db = thesmos::global_workspace::resolve_state_db(db)?;
+            let store = thesmos::state::SqliteStateStore::new(&db)?;
             let id = std::str::FromStr::from_str(&execution_id)?;
-            use agent_spine::WorkflowState;
+            use thesmos::WorkflowState;
             let history = store.history(id);
 
             if history.is_empty() {
@@ -396,10 +396,10 @@ async fn run(command: Command) -> Result<(), Box<dyn std::error::Error>> {
             Ok(())
         }
         Command::Replay { execution_id, db } => {
-            let db = agent_spine::global_workspace::resolve_state_db(db)?;
-            let store = agent_spine::state::SqliteStateStore::new(&db)?;
+            let db = thesmos::global_workspace::resolve_state_db(db)?;
+            let store = thesmos::state::SqliteStateStore::new(&db)?;
             let id = std::str::FromStr::from_str(&execution_id)?;
-            use agent_spine::WorkflowState;
+            use thesmos::WorkflowState;
             let history = store.history(id);
 
             if history.is_empty() {
@@ -434,12 +434,12 @@ async fn run(command: Command) -> Result<(), Box<dyn std::error::Error>> {
         Command::Event { action } => run_event(action).await,
         Command::Agent { action } => run_agent(action).await,
         Command::Update { force } => {
-            agent_spine::update::run_update(force)?;
+            thesmos::update::run_update(force)?;
             Ok(())
         }
         Command::McpServe { db } => {
-            let db = agent_spine::global_workspace::resolve_state_db(db)?;
-            agent_spine::mcp_server::SpineMcp::serve(db).await?;
+            let db = thesmos::global_workspace::resolve_state_db(db)?;
+            thesmos::mcp_server::SpineMcp::serve(db).await?;
             Ok(())
         }
         Command::Serve {
@@ -448,10 +448,10 @@ async fn run(command: Command) -> Result<(), Box<dyn std::error::Error>> {
             dashboard_port,
             nats_url,
         } => {
-            let db = agent_spine::global_workspace::resolve_state_db(db)?;
-            info!("Starting agent-spine gRPC server on port {}", port);
+            let db = thesmos::global_workspace::resolve_state_db(db)?;
+            info!("Starting thesmos gRPC server on port {}", port);
 
-            let wf_manager = agent_spine::WorkflowManager::new(db.clone(), false);
+            let wf_manager = thesmos::WorkflowManager::new(db.clone(), false);
             let closed = wf_manager
                 .recover_interrupted()
                 .map_err(anyhow::Error::msg)?;
@@ -463,29 +463,29 @@ async fn run(command: Command) -> Result<(), Box<dyn std::error::Error>> {
 
             #[cfg(feature = "nats")]
             if let Some(url) = nats_url {
-                agent_spine::jetstream_bridge::spawn_state_bridge(
+                thesmos::jetstream_bridge::spawn_state_bridge(
                     wf_manager.supervisor.clone(),
                     url,
                 );
             }
 
-            let store = agent_spine::state::SqliteStateStore::new(&db)?;
+            let store = thesmos::state::SqliteStateStore::new(&db)?;
             let store = std::sync::Arc::new(std::sync::Mutex::new(store));
 
-            let supervisor = agent_spine::supervisor::Supervisor::new();
+            let supervisor = thesmos::supervisor::Supervisor::new();
 
-            let dashboard_api = agent_spine::api::DashboardApi {
+            let dashboard_api = thesmos::api::DashboardApi {
                 store,
                 workflow_manager: wf_manager,
             };
-            let supervisor_api = agent_spine::api::SupervisorApi { supervisor };
+            let supervisor_api = thesmos::api::SupervisorApi { supervisor };
 
             let dashboard_svc =
-                agent_spine::api::pb::dashboard_service_server::DashboardServiceServer::new(
+                thesmos::api::pb::dashboard_service_server::DashboardServiceServer::new(
                     dashboard_api,
                 );
             let supervisor_svc =
-                agent_spine::api::pb::supervisor_service_server::SupervisorServiceServer::new(
+                thesmos::api::pb::supervisor_service_server::SupervisorServiceServer::new(
                     supervisor_api,
                 );
 
@@ -527,8 +527,8 @@ async fn run(command: Command) -> Result<(), Box<dyn std::error::Error>> {
                 axum::serve(listener, app).await
             });
 
-            let cancel = agent_spine::cancellation::CancelToken::new();
-            let _signal_task = agent_spine::cancellation::setup_signal_handler(cancel.clone());
+            let cancel = thesmos::cancellation::CancelToken::new();
+            let _signal_task = thesmos::cancellation::setup_signal_handler(cancel.clone());
 
             tokio::select! {
                 r = grpc_handle => r??,
@@ -555,19 +555,19 @@ async fn run_brain(command: BrainCommand) -> Result<(), Box<dyn std::error::Erro
             match McpBridge::connect(None).await {
                 Ok(mut bridge) => {
                     bridge.health().await?;
-                    println!("✓ agent-brain is reachable");
+                    println!("✓ tekmor is reachable");
                     // Drop bridge to kill the child process
                     drop(bridge);
                     Ok(())
                 }
                 Err(e) => {
-                    eprintln!("✗ agent-brain unreachable: {e}");
+                    eprintln!("✗ tekmor unreachable: {e}");
                     eprintln!();
-                    eprintln!("  Make sure agent-brain is installed and in PATH.");
+                    eprintln!("  Make sure tekmor is installed and in PATH.");
                     eprintln!("  Set BRAIN_PATH env var for a custom location.");
                     eprintln!("  Common locations:");
-                    eprintln!("    ~/.agent_brain/bin/agent-brain");
-                    eprintln!("    /usr/local/bin/agent-brain");
+                    eprintln!("    ~/.tekmor/bin/tekmor");
+                    eprintln!("    /usr/local/bin/tekmor");
                     eprintln!("    PATH resolution");
                     std::process::exit(1);
                 }
@@ -575,7 +575,7 @@ async fn run_brain(command: BrainCommand) -> Result<(), Box<dyn std::error::Erro
         }
         BrainCommand::Route { message } => {
             let mut bridge = McpBridge::connect(None).await?;
-            println!("Routing message to agent-brain...\n");
+            println!("Routing message to tekmor...\n");
 
             let resp = bridge
                 .route_task(&message, None, &[], 500, RouteLimits::default(), None, None)
@@ -628,7 +628,7 @@ async fn run_brain(command: BrainCommand) -> Result<(), Box<dyn std::error::Erro
         BrainCommand::Status => {
             let mut bridge = McpBridge::connect(None).await?;
             let info = bridge.health().await?;
-            println!("agent-brain status:");
+            println!("tekmor status:");
             println!("  Server:  {}", info.name);
             println!("  Version: {}", info.version);
 
@@ -642,13 +642,13 @@ async fn run_brain(command: BrainCommand) -> Result<(), Box<dyn std::error::Erro
 }
 
 async fn run_event(command: EventCommand) -> Result<(), Box<dyn std::error::Error>> {
-    use agent_spine::event::{AgentRegistry, connect_event_bus, start_event_server};
+    use thesmos::event::{AgentRegistry, connect_event_bus, start_event_server};
     use std::sync::Arc;
 
     match command {
         EventCommand::Serve { port, db, nats_url } => {
-            let db = agent_spine::global_workspace::resolve_state_db(db).ok();
-            let nats_url = nats_url.or_else(agent_spine::nats_bus::default_nats_url);
+            let db = thesmos::global_workspace::resolve_state_db(db).ok();
+            let nats_url = nats_url.or_else(thesmos::nats_bus::default_nats_url);
             let bus = connect_event_bus(nats_url).await?;
             let registry = Arc::new(AgentRegistry::new());
             let handle = start_event_server(bus, registry, port, db);

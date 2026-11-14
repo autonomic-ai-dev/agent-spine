@@ -1,8 +1,8 @@
 [verify]
 commands = [
-  "cargo test -p agent-spine",
-  "cargo clippy -p agent-spine -- -D warnings",
-  "cargo check -p agent-spine",
+  "cargo test -p thesmos",
+  "cargo clippy -p thesmos -- -D warnings",
+  "cargo check -p thesmos",
   "sh .verify/checks/require_tests.sh --test engine_tests",
   "sh .verify/checks/require_tests.sh --test execution_control_tests",
   "sh .verify/checks/require_tests.sh --test wake_on_call_tests",

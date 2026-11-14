@@ -140,7 +140,7 @@ impl ServerHandler for SpineMcp {
     fn get_info(&self) -> ServerInfo {
         let mut info = ServerInfo::default();
         info.instructions = Some(
-            "Workflow supervision MCP server for agent-spine. Tools: spine_submit_workflow (submit a YAML DAG definition), spine_check_status (poll workflow status by ID), spine_list_workflows (list recent workflows)."
+            "Workflow supervision MCP server for thesmos. Tools: spine_submit_workflow (submit a YAML DAG definition), spine_check_status (poll workflow status by ID), spine_list_workflows (list recent workflows)."
                 .into(),
         );
         info

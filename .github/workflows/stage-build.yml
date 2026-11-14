@@ -32,7 +32,7 @@ jobs:
       - name: Resolve package metadata
         id: meta
         run: |
-          version=$(grep '^version' agent-spine/Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          version=$(grep '^version' thesmos/Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - uses: aeswibon/pipeline-compose-export@v1.17.1

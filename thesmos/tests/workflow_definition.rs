@@ -1,4 +1,4 @@
-use agent_spine::{NodeKind, WorkflowDefinition, WorkflowEdge, WorkflowNode};
+use thesmos::{NodeKind, WorkflowDefinition, WorkflowEdge, WorkflowNode};
 
 #[test]
 fn valid_workflow_is_accepted() {
@@ -155,7 +155,7 @@ fn fork_join_workflow_is_accepted() {
 
 #[test]
 fn engineering_safety_builtin_workflow_validates() {
-    let def = WorkflowDefinition::from_yaml(agent_spine::workflows::ENGINEERING_SAFETY)
+    let def = WorkflowDefinition::from_yaml(thesmos::workflows::ENGINEERING_SAFETY)
         .expect("engineering-safety YAML must parse");
     let validated = def
         .validate()

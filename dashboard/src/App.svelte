@@ -78,7 +78,7 @@
       replayStatus = `Replay initiated for sequence #${sequence}`;
       fetchExecutions();
     } catch (e) {
-      replayStatus = `Replay command sent to agent-spine: resuming from sequence #${sequence}`;
+      replayStatus = `Replay command sent to thesmos: resuming from sequence #${sequence}`;
     }
     setTimeout(() => { replayStatus = null; }, 4000);
   }

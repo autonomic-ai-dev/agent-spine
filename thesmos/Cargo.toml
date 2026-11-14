@@ -1,10 +1,10 @@
 [package]
-name = "agent-spine"
-version = "1.0.0-rc3"
+name = "thesmos"
+version = "1.1.0-rc2"
 edition = "2024"
 license = "Apache-2.0"
 description = "A local-first, stateful workflow engine for supervising AI coding agents."
-repository = "https://github.com/autonomic-ai-dev/agent-spine"
+repository = "https://github.com/autonomic-ai-dev/thesmos"
 readme = "README.md"
 keywords = ["agents", "orchestration", "workflow", "state-machine", "ai"]
 categories = ["development-tools"]

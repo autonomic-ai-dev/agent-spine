@@ -1,4 +1,4 @@
-# agent-spine
+# thesmos
 
 > **Deterministic Workflow DAG Engine & Cognitive State Machine for Coding Agents.**
 
@@ -7,7 +7,7 @@
 [![Platform](https://img.shields.io/badge/platform-macOS%20(Apple%20Silicon)-lightgrey.svg)](https://autonomic-ai.dev)
 [![Documentation](https://img.shields.io/badge/docs-autonomic--ai.dev-black.svg)](https://autonomic-ai.dev)
 
-Part of [Autonomic AI](https://autonomic-ai.dev), alongside [agent-brain](https://github.com/autonomic-ai-dev/agent-brain). Replaces probabilistic agent prompt loops with **declarative, version-controlled Directed Acyclic Graphs (DAGs)**, immutable snapshots, and human-in-the-loop gates.
+Part of [Autonomic AI](https://autonomic-ai.dev), alongside [tekmor](https://github.com/autonomic-ai-dev/tekmor). Replaces probabilistic agent prompt loops with **declarative, version-controlled Directed Acyclic Graphs (DAGs)**, immutable snapshots, and human-in-the-loop gates.
 
 ---
 
@@ -15,11 +15,11 @@ Part of [Autonomic AI](https://autonomic-ai.dev), alongside [agent-brain](https:
 
 ```mermaid
 flowchart TD
-    Trigger["agent-spine run <workflow.yaml>"] --> Validate["Schema Validation & Acyclicity Check"]
+    Trigger["thesmos run <workflow.yaml>"] --> Validate["Schema Validation & Acyclicity Check"]
     Validate --> Walker["Tokio Asynchronous Graph Walker"]
     
     subgraph ExecutionEngine ["Deterministic Node Execution"]
-        Walker --> AgentNode["Agent Node<br/>(Knapsack Injected from agent-brain)"]
+        Walker --> AgentNode["Agent Node<br/>(Knapsack Injected from tekmor)"]
         Walker --> VerifyNode["Verify Node<br/>(Active Command Execution)"]
         Walker --> GateNode["ApprovalGate Node<br/>(Pauses Until Approved)"]
         Walker --> SpecNode["SpeculativeFork Node<br/>(Isolated Git Worktrees)"]
@@ -30,21 +30,21 @@ flowchart TD
     GateNode --> Snapshot
     SpecNode --> Snapshot
 
-    Snapshot --> BrainSync[("Procedure Graph Sync<br/>(agent-brain / Schema v25)")]
+    Snapshot --> BrainSync[("Procedure Graph Sync<br/>(tekmor / Schema v25)")]
     Snapshot --> Replay["Replay an execution's final state"]
 ```
 
 ---
 
-## Why agent-spine?
+## Why thesmos?
 
-| Challenge in Agentic Automation | agent-spine Solution | Mechanism |
+| Challenge in Agentic Automation | thesmos Solution | Mechanism |
 | :--- | :--- | :--- |
 | **Unbounded Agent Retries & Token Burns** | Strict DAG execution bounds worker tasks to isolated steps with retry policies | Exponential backoff and circuit breakers |
 | **Hallucinatory Control Flow** | Declarative YAML topology dictates transitions and branching conditions | Acyclic graph validator with boolean condition expressions |
 | **Silent Failures & Missing Evidence** | `Verify` nodes actively execute shell validation commands under timeouts | Captures exit codes and stdout/stderr |
-| **Context Window Pollution** | Each node is injected with a surgical cognitive knapsack from `agent-brain` | Node-specific `_brain_knapsack` with token budgeting |
-| **Disaster Recovery Amnesia** | Immutable state snapshots recorded at every step transition | `agent-spine replay <EXECUTION_ID>` recreates a run's final state |
+| **Context Window Pollution** | Each node is injected with a surgical cognitive knapsack from `tekmor` | Node-specific `_brain_knapsack` with token budgeting |
+| **Disaster Recovery Amnesia** | Immutable state snapshots recorded at every step transition | `thesmos replay <EXECUTION_ID>` recreates a run's final state |
 | **Flaky or Speculative Refactors** | Parallel speculative worktree branching | Evaluates multiple git branches concurrently, merging winning verified path |
 
 ---
@@ -53,7 +53,7 @@ flowchart TD
 
 | Kind | Purpose | Behavior |
 | :--- | :--- | :--- |
-| **`Agent`** | Discrete cognitive task | Hydrates a knapsack of up to 500 tokens via `agent-brain route_task`, delegates to worker, snapshots result |
+| **`Agent`** | Discrete cognitive task | Hydrates a knapsack of up to 500 tokens via `tekmor route_task`, delegates to worker, snapshots result |
 | **`Verify`** | Machine validation | Actively executes `command`, captures exit code and output, sets `verified` status |
 | **`ApprovalGate`** | Human-in-the-loop barrier | Pauses the workflow until the node payload has `approved: true`. Gates auto-approve by default. |
 | **`SpeculativeFork`** | Competitive multi-branching | Spawns isolated Git worktrees to evaluate multiple solutions concurrently |
@@ -72,23 +72,23 @@ flowchart TD
 
 ```bash
 brew tap autonomic-ai-dev/tap
-brew install agent-spine
-agent-spine init
+brew install thesmos
+thesmos init
 ```
 
 ### Option 2: Direct Download / Curl
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/autonomic-ai-dev/agent-spine/master/scripts/install.sh | bash -s -- --global
+curl -fsSL https://raw.githubusercontent.com/autonomic-ai-dev/thesmos/master/scripts/install.sh | bash -s -- --global
 ```
 
 ### Option 3: Compile From Source (Rust)
 
 ```bash
-git clone https://github.com/autonomic-ai-dev/agent-spine.git
-cd agent-spine
-cargo build --release -p agent-spine
-./target/release/agent-spine doctor
+git clone https://github.com/autonomic-ai-dev/thesmos.git
+cd thesmos
+cargo build --release -p thesmos
+./target/release/thesmos doctor
 ```
 
 ---
@@ -97,16 +97,16 @@ cargo build --release -p agent-spine
 
 | Command | Purpose |
 | :--- | :--- |
-| `agent-spine init` | Scaffolds an example workflow and checks the environment |
-| `agent-spine validate <file>` | Validates DAG syntax, node types, and acyclicity |
-| `agent-spine run <file>` | Executes a workflow DAG synchronously |
-| `agent-spine run <file> --brain` | Enables agent-brain routing and enrichment |
-| `agent-spine inspect <EXECUTION_ID>` | Shows the history of one execution |
-| `agent-spine replay <EXECUTION_ID>` | Recreates an execution's final state |
-| `agent-spine status` | Lists the capabilities planned for this scaffold |
-| `agent-spine serve` | Starts the live dashboard API on `:3000` and the dashboard on `:3001` |
-| `agent-spine mcp-serve` | Starts stdio MCP server for Cursor, Claude, AGY |
-| `agent-spine doctor` | Checks rustc, protoc, bun, the `agent-brain` binary, the spine state directory and the example workflow |
+| `thesmos init` | Scaffolds an example workflow and checks the environment |
+| `thesmos validate <file>` | Validates DAG syntax, node types, and acyclicity |
+| `thesmos run <file>` | Executes a workflow DAG synchronously |
+| `thesmos run <file> --brain` | Enables tekmor routing and enrichment |
+| `thesmos inspect <EXECUTION_ID>` | Shows the history of one execution |
+| `thesmos replay <EXECUTION_ID>` | Recreates an execution's final state |
+| `thesmos status` | Lists the capabilities planned for this scaffold |
+| `thesmos serve` | Starts the live dashboard API on `:3000` and the dashboard on `:3001` |
+| `thesmos mcp-serve` | Starts stdio MCP server for Cursor, Claude, AGY |
+| `thesmos doctor` | Checks rustc, protoc, bun, the `tekmor` binary, the spine state directory and the example workflow |
 
 ---
 
@@ -147,7 +147,7 @@ edges:
     to: sign_off
 ```
 
-Check it with `agent-spine validate bugfix.yaml`. Built-in workflows are available through `agent-spine init --with list`.
+Check it with `thesmos validate bugfix.yaml`. Built-in workflows are available through `thesmos init --with list`.
 
 ---
 
@@ -156,10 +156,10 @@ Check it with `agent-spine validate bugfix.yaml`. Built-in workflows are availab
 ```bash
 # Formatter & linter check
 cargo fmt --all -- --check
-cargo clippy -p agent-spine -- -D warnings
+cargo clippy -p thesmos -- -D warnings
 
 # Run all test suites
-cargo test -p agent-spine
+cargo test -p thesmos
 
 # Run workflow engine verification playbook
 .verify/playbooks/verify_workflow_engine.sh
@@ -172,7 +172,7 @@ cargo test -p agent-spine
 - **Documentation Portal**: [https://autonomic-ai.dev](https://autonomic-ai.dev)
 - **Workflow & DAG Architecture**: [https://autonomic-ai.dev/docs/workflows](https://autonomic-ai.dev/docs/workflows)
 - **Ecosystem Architecture Guide**: [https://autonomic-ai.dev/docs/architecture](https://autonomic-ai.dev/docs/architecture)
-- **Cognitive Governor (`agent-brain`)**: [https://github.com/autonomic-ai-dev/agent-brain](https://github.com/autonomic-ai-dev/agent-brain)
+- **Cognitive Governor (`tekmor`)**: [https://github.com/autonomic-ai-dev/tekmor](https://github.com/autonomic-ai-dev/tekmor)
 
 ---
 

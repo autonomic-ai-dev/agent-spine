@@ -28,9 +28,9 @@ impl BrainProvenance {
 }
 
 /// An optional enhancement over `ConfidenceRouter` that delegates escalation
-/// decisions to agent-brain's `route_task` MCP tool.
+/// decisions to tekmor's `route_task` MCP tool.
 ///
-/// If agent-brain is unavailable, falls back to the heuristic `ConfidenceRouter`.
+/// If tekmor is unavailable, falls back to the heuristic `ConfidenceRouter`.
 pub struct BrainRouter {
     bridge: Option<McpBridge>,
     fallback: ConfidenceRouter,
@@ -50,7 +50,7 @@ impl BrainRouter {
         }
     }
 
-    /// Evaluate a workflow transition, potentially escalating via agent-brain.
+    /// Evaluate a workflow transition, potentially escalating via tekmor.
     /// This is best-effort; when brain is unavailable, it falls back immediately.
     pub fn evaluate_transition(
         &mut self,
@@ -66,19 +66,19 @@ impl BrainRouter {
                     // Try normal connect first
                     match handle.block_on(McpBridge::connect(self.cwd.as_deref())) {
                         Ok(bridge) => {
-                            tracing::info!("connected to agent-brain for workflow routing");
+                            tracing::info!("connected to tekmor for workflow routing");
                             self.bridge = Some(bridge);
                         }
                         Err(first_err) => {
                             tracing::warn!(
-                                "agent-brain not reachable, attempting wake-on-call: {first_err}"
+                                "tekmor not reachable, attempting wake-on-call: {first_err}"
                             );
                             // Wake-on-call: spawn brain and retry
                             let _child = handle.block_on(wake_on_call::try_spawn_brain());
                             if handle.block_on(wake_on_call::wait_for_brain(30)) {
                                 match handle.block_on(McpBridge::connect(self.cwd.as_deref())) {
                                     Ok(bridge) => {
-                                        tracing::info!("connected to agent-brain via wake-on-call");
+                                        tracing::info!("connected to tekmor via wake-on-call");
                                         self.bridge = Some(bridge);
                                     }
                                     Err(e) => {
@@ -86,7 +86,7 @@ impl BrainRouter {
                                     }
                                 }
                             } else {
-                                tracing::warn!("wake-on-call failed, agent-brain did not start");
+                                tracing::warn!("wake-on-call failed, tekmor did not start");
                             }
                         }
                     }
@@ -155,7 +155,7 @@ impl BrainRouter {
         ))
     }
 
-    /// Store a trajectory record in agent-brain (best-effort).
+    /// Store a trajectory record in tekmor (best-effort).
     pub fn store_trajectory(
         &mut self,
         execution_id: &str,
@@ -323,7 +323,7 @@ impl BrainRouter {
         }
     }
 
-    /// Get context from agent-brain for a specific workflow node.
+    /// Get context from tekmor for a specific workflow node.
     pub fn get_context_for_node(
         &mut self,
         node_kind: &str,

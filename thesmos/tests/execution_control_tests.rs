@@ -1,11 +1,11 @@
 use serde_json::json;
 
-use agent_spine::cancellation::CancelToken;
-use agent_spine::idempotency::{
+use thesmos::cancellation::CancelToken;
+use thesmos::idempotency::{
     IdempotencyRecord, IdempotencyStore, InMemoryIdempotencyStore, SqliteIdempotencyStore,
     check_idempotency,
 };
-use agent_spine::supervisor::{Supervisor, SupervisorError};
+use thesmos::supervisor::{Supervisor, SupervisorError};
 
 fn record(key: &str, execution_id: &str, result: &str) -> IdempotencyRecord {
     IdempotencyRecord {
