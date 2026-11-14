@@ -1,8 +1,8 @@
+use std::sync::{Arc, Mutex};
 use thesmos::executor::Executor;
 use thesmos::state::InMemoryStateStore;
 use thesmos::supervisor::Supervisor;
 use thesmos::workflow::{NodeKind, WorkflowDefinition, WorkflowEdge, WorkflowNode};
-use std::sync::{Arc, Mutex};
 
 #[test]
 fn check_send_types() {

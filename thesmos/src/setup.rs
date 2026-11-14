@@ -95,10 +95,7 @@ pub fn run_init(
         if Command::new("bun").arg("--version").output().is_err() {
             warnings.push("bun — dashboard dev server (https://bun.sh)");
         }
-        if Command::new("tekmor")
-            .arg("--version")
-            .output()
-            .is_err()
+        if Command::new("tekmor").arg("--version").output().is_err()
             && std::env::var("BRAIN_PATH").is_err()
         {
             warnings.push(

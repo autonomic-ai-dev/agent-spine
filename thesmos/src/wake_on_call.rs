@@ -3,10 +3,7 @@ use std::time::Duration;
 use tokio::process::{Child, Command};
 use tracing::{info, warn};
 
-const COMMON_PATHS: &[&str] = &[
-    "/usr/local/bin/tekmor",
-    "/opt/homebrew/bin/tekmor",
-];
+const COMMON_PATHS: &[&str] = &["/usr/local/bin/tekmor", "/opt/homebrew/bin/tekmor"];
 
 async fn find_brain() -> Option<PathBuf> {
     if let Ok(path) = std::env::var("BRAIN_PATH") {

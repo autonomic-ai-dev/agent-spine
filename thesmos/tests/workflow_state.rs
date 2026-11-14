@@ -1,7 +1,5 @@
-use thesmos::{
-    ExecutionId, StateSnapshot, Transition, WorkflowState, state::InMemoryStateStore,
-};
 use serde_json::json;
+use thesmos::{ExecutionId, StateSnapshot, Transition, WorkflowState, state::InMemoryStateStore};
 
 #[test]
 fn state_transitions_are_immutable_and_replayable() {
@@ -77,10 +75,7 @@ fn sqlite_store_preserves_snapshot_history() {
     let execution_id = ExecutionId::new();
     let snapshot1 = StateSnapshot::initial(execution_id, json!({"step": 0}));
     let snapshot2 = snapshot1
-        .transition(
-            thesmos::Transition::new("one", "two"),
-            json!({"step": 1}),
-        )
+        .transition(thesmos::Transition::new("one", "two"), json!({"step": 1}))
         .unwrap();
 
     store

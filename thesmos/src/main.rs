@@ -316,8 +316,7 @@ async fn run(command: Command) -> Result<(), Box<dyn std::error::Error>> {
             let workflow_path = match meta {
                 Some(ref prompt) => {
                     let workflows_dir = workflow.parent().unwrap_or(&workflow);
-                    let router =
-                        thesmos::meta_router::MetaRouter::new(workflows_dir.to_path_buf());
+                    let router = thesmos::meta_router::MetaRouter::new(workflows_dir.to_path_buf());
                     router
                         .select_workflow(prompt)
                         .unwrap_or_else(|| workflow.clone())
@@ -362,8 +361,7 @@ async fn run(command: Command) -> Result<(), Box<dyn std::error::Error>> {
                     &workflow_name,
                 )?
             };
-            let _dag_path =
-                thesmos::global_workspace::export_dag_summary(&history, execution_id)?;
+            let _dag_path = thesmos::global_workspace::export_dag_summary(&history, execution_id)?;
             println!("Workflow completed. Execution ID: {}", execution_id);
             println!("State db: {}", db.display());
             println!("Execution graph: {}", graph_path.display());
@@ -463,10 +461,7 @@ async fn run(command: Command) -> Result<(), Box<dyn std::error::Error>> {
 
             #[cfg(feature = "nats")]
             if let Some(url) = nats_url {
-                thesmos::jetstream_bridge::spawn_state_bridge(
-                    wf_manager.supervisor.clone(),
-                    url,
-                );
+                thesmos::jetstream_bridge::spawn_state_bridge(wf_manager.supervisor.clone(), url);
             }
 
             let store = thesmos::state::SqliteStateStore::new(&db)?;
@@ -642,8 +637,8 @@ async fn run_brain(command: BrainCommand) -> Result<(), Box<dyn std::error::Erro
 }
 
 async fn run_event(command: EventCommand) -> Result<(), Box<dyn std::error::Error>> {
-    use thesmos::event::{AgentRegistry, connect_event_bus, start_event_server};
     use std::sync::Arc;
+    use thesmos::event::{AgentRegistry, connect_event_bus, start_event_server};
 
     match command {
         EventCommand::Serve { port, db, nats_url } => {
